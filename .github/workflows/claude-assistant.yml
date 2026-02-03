@@ -1,0 +1,55 @@
+name: Claude Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude-response:
+    if: |
+      contains(github.event.comment.body, '@claude') ||
+      (github.event_name == 'issues' && github.event.action == 'assigned' && github.event.assignee.login == 'claude-bot')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Claude Assistant Response
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Using Claude Max subscription via OAuth token (flat $200/month)
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@claude"
+          prompt: |
+            You are a helpful assistant for the Xenios platform.
+
+            ## Context
+            This is a monorepo with:
+            - Go backend (apps/backend) - Clean Architecture, raw SQL only
+            - Next.js web app (apps/web) - Clean Architecture
+            - React Native mobile app (apps/mobile) - Clean Architecture
+
+            ## Rules
+            - Follow Clean Architecture: dependencies flow INWARD only
+            - Backend is the ONLY app that accesses the database
+            - Web and Mobile call Backend API, never database directly
+            - Use TDD: write tests first, then implementation
+            - No ORMs allowed in Backend (use pgx/raw SQL)
+
+            ## Your Role
+            Help with code reviews, questions, explanations, and suggestions.
+            Be concise and actionable in your responses.
+          claude_args: |
+            --max-turns 20
+            --model claude-opus-4-5-20251101

@@ -1,0 +1,106 @@
+name: Claude Feature Implementation
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  implement-feature:
+    if: github.event.label.name == 'claude-implement'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Claude Implements Feature
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Using Claude Max subscription via OAuth token (flat $200/month)
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            ISSUE: #${{ github.event.issue.number }}
+            TITLE: ${{ github.event.issue.title }}
+
+            You are implementing a feature for the Xenios platform.
+
+            ## Instructions
+
+            1. READ the issue description thoroughly
+            2. IDENTIFY which app(s) need changes (backend, web, mobile)
+            3. FOLLOW Test-Driven Development:
+               - Write failing tests FIRST
+               - Implement minimum code to pass tests
+               - Refactor while keeping tests green
+            4. ENFORCE Clean Architecture:
+               - Domain layer: entities and repository interfaces
+               - Application layer: use cases only
+               - Infrastructure: external implementations
+               - Presentation: UI/API handlers
+            5. CREATE a PR with:
+               - Clear description of changes
+               - Test coverage report
+               - Screenshots/recordings for UI changes
+
+            ## Architecture Rules
+
+            - Dependencies flow INWARD only
+            - Domain layer has NO external dependencies
+            - Use cases call repository interfaces, not implementations
+            - Handlers/Controllers are thin - delegate to use cases
+
+            ## Database Rules (CRITICAL)
+
+            - ONLY the Backend (Go) accesses the database (Supabase/PostgreSQL)
+            - Web and Mobile NEVER access database directly - they call Backend APIs
+            - NO ORMs allowed - use raw SQL with pgx/sqlx
+            - Repository INTERFACES in domain layer (no DB imports)
+            - Repository IMPLEMENTATIONS in infrastructure layer
+            - FORBIDDEN in Backend: GORM, Prisma, TypeORM, Drizzle, Ent
+            - FORBIDDEN in Web/Mobile: ANY database library (@supabase, pg, etc.)
+            - Always use parameterized queries ($1, $2) for SQL injection prevention
+
+            ## TDD Rules
+
+            - Every new function needs a test
+            - Test files: `*_test.go` (Go), `*.test.ts` (TypeScript)
+            - Minimum 80% coverage for new code
+
+            ## Version Verification (CRITICAL)
+
+            Your knowledge about package versions may be OUTDATED.
+            Before using ANY specific version:
+            1. Check existing project files (package.json, go.mod, .nvmrc)
+            2. Use WebSearch to verify current LTS/stable versions
+            3. Check official docs (nodejs.org, go.dev, npmjs.com)
+            4. If uncertain, post a comment on the issue asking for clarification
+               before proceeding, or document your assumption in the PR
+          claude_args: |
+            --max-turns 50
+            --model claude-opus-4-5-20251101
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+
+      - name: Add implementation label
+        if: success()
+        run: |
+          gh issue edit ${{ github.event.issue.number }} --add-label "implementation-complete"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

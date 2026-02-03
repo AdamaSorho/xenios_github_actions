@@ -1,0 +1,83 @@
+name: Claude Bug Fix
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix-bug:
+    if: github.event.label.name == 'claude-fix'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Claude Fixes Bug
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Using Claude Max subscription via OAuth token (flat $200/month)
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            BUG REPORT: #${{ github.event.issue.number }}
+            TITLE: ${{ github.event.issue.title }}
+
+            You are fixing a bug in the Xenios platform.
+
+            ## Instructions
+
+            1. READ the bug report thoroughly
+            2. REPRODUCE the issue to understand it
+            3. IDENTIFY the root cause (don't just fix symptoms)
+            4. WRITE a failing test that captures the bug
+            5. FIX the bug with minimal changes
+            6. VERIFY the test passes
+            7. RUN the full test suite to check for regressions
+            8. CREATE a PR with:
+               - Root cause explanation
+               - Fix description
+               - Test that verifies the fix
+
+            ## Architecture Rules (Must Follow)
+
+            - Dependencies flow INWARD only
+            - Domain layer has NO external dependencies
+            - Backend is the ONLY app that accesses the database
+            - Web and Mobile call Backend API, never database directly
+            - No ORMs allowed in Backend (use pgx/raw SQL only)
+
+            ## Bug Fix Best Practices
+
+            - Fix the root cause, not just the symptom
+            - Add tests to prevent regression
+            - Keep changes focused and minimal
+            - Document why the bug occurred
+          claude_args: |
+            --max-turns 30
+            --model claude-opus-4-5-20251101
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+
+      - name: Add fix label
+        if: success()
+        run: |
+          gh issue edit ${{ github.event.issue.number }} --add-label "fix-complete"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

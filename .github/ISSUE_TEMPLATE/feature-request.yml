@@ -1,0 +1,89 @@
+name: Feature Request (Claude Implement)
+description: Request a new feature for Claude to implement
+title: "[FEATURE] "
+labels: ["claude-implement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Request
+        Fill out this template to help Claude understand and implement your feature.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One-sentence description of the feature
+      placeholder: "Add user profile page with avatar upload"
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User Story
+      description: Describe the feature from a user's perspective
+      placeholder: |
+        As a [role],
+        I want [capability]
+        so that [benefit].
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: List the specific criteria that must be met
+      placeholder: |
+        - [ ] User can upload avatar image
+        - [ ] Avatar is resized to 200x200
+        - [ ] Avatar is stored in cloud storage
+        - [ ] Profile page displays avatar
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: affected-apps
+    attributes:
+      label: Affected Apps
+      description: Which apps need changes?
+      options:
+        - label: Backend (Go)
+        - label: Web (Next.js)
+        - label: Mobile (React Native)
+
+  - type: textarea
+    id: technical-notes
+    attributes:
+      label: Technical Notes
+      description: Any architectural guidance, API contracts, constraints
+      placeholder: |
+        - Use existing FileUpload component
+        - Store in S3-compatible storage
+        - Backend should validate image type/size
+
+  - type: textarea
+    id: test-scenarios
+    attributes:
+      label: Test Scenarios
+      description: Key test cases Claude should implement
+      placeholder: |
+        1. Happy path: User uploads valid JPG avatar
+        2. Edge case: User uploads oversized image
+        3. Error case: Invalid file type rejected
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How urgent is this feature?
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+    validations:
+      required: true

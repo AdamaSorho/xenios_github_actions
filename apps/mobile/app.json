@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Xenios",
+    "slug": "xenios",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "xenios",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.xenios.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.xenios.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

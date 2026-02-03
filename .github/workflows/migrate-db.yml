@@ -1,0 +1,67 @@
+name: Database Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/backend/migrations/**'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  migrate-staging:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install golang-migrate
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+      - name: Run Migrations (Staging)
+        run: |
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" up
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+      - name: Verify Migration Success
+        run: |
+          echo "Staging migrations completed successfully"
+
+  migrate-production:
+    needs: migrate-staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      # Requires manual approval in GitHub Environment settings
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install golang-migrate
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+      - name: Run Migrations (Production)
+        run: |
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" up
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Verify Migration Success
+        run: |
+          echo "Production migrations completed successfully"

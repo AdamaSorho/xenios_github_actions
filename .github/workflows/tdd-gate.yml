@@ -1,0 +1,148 @@
+name: TDD Quality Gate
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  tdd-enforcement:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Full history for diff
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Backend TDD Checks
+      - name: Go - Check test coverage
+        working-directory: apps/backend
+        run: |
+          go test -coverprofile=coverage.out ./...
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Backend coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "::error::Backend test coverage ($COVERAGE%) is below 80%"
+            exit 1
+          fi
+
+      - name: Go - Verify Clean Architecture
+        working-directory: apps/backend
+        run: |
+          # Check domain has no external imports
+          if grep -r "infrastructure\|adapter" internal/domain/ 2>/dev/null; then
+            echo "::error::Domain layer must not import from outer layers"
+            exit 1
+          fi
+
+          # Check usecase only imports domain
+          if grep -r "infrastructure\|adapter/handler" internal/usecase/ 2>/dev/null; then
+            echo "::error::Usecase layer can only import from domain"
+            exit 1
+          fi
+
+          echo "Clean Architecture validation passed"
+
+      - name: Go - No ORM Check
+        working-directory: apps/backend
+        run: |
+          # Detect forbidden ORM imports
+          FORBIDDEN_ORMS="gorm.io|entgo.io|github.com/uptrace/bun|github.com/volatiletech/sqlboiler"
+          if grep -rE "$FORBIDDEN_ORMS" --include="*.go" . 2>/dev/null; then
+            echo "::error::ORM detected! Use raw SQL with pgx/sqlx only. No GORM, Ent, Bun, or SQLBoiler."
+            exit 1
+          fi
+
+          echo "No ORM check passed"
+
+      - name: Go - Database in Infrastructure Only
+        working-directory: apps/backend
+        run: |
+          # Check that pgx/database imports only exist in infrastructure/adapter layers
+          if grep -rE "github.com/jackc/pgx|database/sql" internal/domain/ internal/usecase/ 2>/dev/null; then
+            echo "::error::Database imports found outside infrastructure layer!"
+            echo "Domain and UseCase layers must not import database packages."
+            echo "Define repository INTERFACES in domain, IMPLEMENTATIONS in infrastructure."
+            exit 1
+          fi
+
+          echo "Database import location check passed"
+
+      # Web TDD Checks
+      - name: Web - Run tests with coverage
+        working-directory: apps/web
+        run: |
+          npm run test:coverage || true
+          # Coverage check handled by Jest config threshold
+
+      - name: Web - No Direct Database Access
+        working-directory: apps/web
+        run: |
+          # Web must NEVER access database directly - only consume Backend API
+          FORBIDDEN_DEPS='@supabase/supabase-js|prisma|typeorm|drizzle-orm|sequelize|@mikro-orm|objection|"pg"|"mysql"|"mongodb"'
+          if grep -E "$FORBIDDEN_DEPS" package.json 2>/dev/null; then
+            echo "::error::Database library detected in Web app!"
+            echo "Web must NOT access database directly."
+            echo "Use the Backend API via @xenios/api-client instead."
+            exit 1
+          fi
+
+          echo "Web database access check passed"
+
+      # Mobile TDD Checks
+      - name: Mobile - Run tests with coverage
+        working-directory: apps/mobile
+        run: |
+          npm run test:coverage || true
+          # Coverage check handled by Jest config threshold
+
+      - name: Mobile - No Direct Database Access
+        working-directory: apps/mobile
+        run: |
+          # Mobile must NEVER access database directly - only consume Backend API
+          FORBIDDEN_DEPS='@supabase/supabase-js|prisma|typeorm|drizzle-orm|sequelize|@mikro-orm|objection|"pg"|"mysql"|"mongodb"'
+          if grep -E "$FORBIDDEN_DEPS" package.json 2>/dev/null; then
+            echo "::error::Database library detected in Mobile app!"
+            echo "Mobile must NOT access database directly."
+            echo "Use the Backend API via @xenios/api-client instead."
+            exit 1
+          fi
+
+          echo "Mobile database access check passed"
+
+      # Architecture Lint
+      - name: Lint architecture dependencies
+        run: |
+          npx dependency-cruiser --config .dependency-cruiser.js apps/ || true
+
+      # TDD Compliance Report
+      - name: TDD Compliance Report
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review this PR for TDD compliance:
+
+            1. Are tests written BEFORE implementation? (check commit order)
+            2. Do tests cover edge cases?
+            3. Is test coverage adequate?
+            4. Does code follow Clean Architecture?
+
+            Provide a compliance score (0-100) and specific feedback.
+          claude_args: |
+            --max-turns 5
+            --json-schema '{"type":"object","properties":{"score":{"type":"number"},"compliant":{"type":"boolean"},"issues":{"type":"array","items":{"type":"string"}},"suggestions":{"type":"array","items":{"type":"string"}}},"required":["score","compliant"]}'

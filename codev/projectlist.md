@@ -112,7 +112,7 @@ projects:
   - id: "0002"
     title: "AI-Powered CI/CD Platform"
     summary: "GitHub Actions with Claude Code to automatically build features, fix bugs, and deploy across Go/Next.js/React Native monorepo"
-    status: conceived
+    status: committed
     priority: high
     files:
       spec: codev/specs/0002-ai-powered-cicd-platform.md

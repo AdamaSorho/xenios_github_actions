@@ -1,0 +1,105 @@
+name: Bug Report (Claude Fix)
+description: Report a bug for Claude to fix
+title: "[BUG] "
+labels: ["claude-fix"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+        Fill out this template to help Claude understand and fix the bug.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What's broken?
+      placeholder: "Login button doesn't respond after entering credentials"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce the bug?
+      placeholder: |
+        1. Go to /login page
+        2. Enter email and password
+        3. Click "Login" button
+        4. Nothing happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+      placeholder: "User should be logged in and redirected to dashboard"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What happens instead?
+      placeholder: "Button appears to click but no action occurs, no error shown"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-app
+    attributes:
+      label: Affected App
+      description: Where does the bug occur?
+      options:
+        - Backend (Go)
+        - Web (Next.js)
+        - Mobile (React Native)
+        - Multiple Apps
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide environment details
+      placeholder: |
+        - OS: macOS 15.2
+        - Browser: Chrome 132
+        - App version: 0.0.1
+        - Node version: 24.0.0
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: Include relevant error messages, console logs, or screenshots
+      placeholder: |
+        ```
+        Error: Network request failed
+        at fetchUser (user.ts:42)
+        ```
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this bug?
+      options:
+        - Low - Cosmetic issue
+        - Medium - Feature works but with issues
+        - High - Feature broken but workaround exists
+        - Critical - Feature completely broken, blocking users
+    validations:
+      required: true
+
+  - type: textarea
+    id: possible-cause
+    attributes:
+      label: Possible Cause (Optional)
+      description: If you have any ideas about what might be causing this
+      placeholder: "Might be related to recent auth changes in PR #123"

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / Discussion
+    url: https://github.com/xenios/xenios/discussions
+    about: Ask questions and discuss features in GitHub Discussions
+  - name: Security Issue
+    url: https://github.com/xenios/xenios/security/advisories/new
+    about: Report security vulnerabilities privately

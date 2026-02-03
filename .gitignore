@@ -9,8 +9,75 @@ node_modules/
 
 # Build output
 dist/
+build/
+.next/
+.turbo/
+out/
+
+# Test coverage
+coverage/
+*.lcov
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
 
 # OS files
 .DS_Store
+Thumbs.db
 *.swp
 *.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# React Native / Expo
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+ios/
+android/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Fly.io
+fly.staging.toml

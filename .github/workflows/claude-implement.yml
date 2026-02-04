@@ -59,6 +59,43 @@ jobs:
                - Clear description of changes
                - Test coverage report
                - Screenshots/recordings for UI changes
+               - **Mermaid sequence diagram** showing the flow of the implementation
+
+            ## Sequence Diagram Requirements
+
+            Every PR MUST include a Mermaid sequence diagram in the description.
+            The diagram should show:
+            - Key actors/components involved (User, Mobile/Web, Backend, Database, External APIs)
+            - The flow of requests and responses
+            - Important decision points or branching logic
+
+            Example format:
+            ```mermaid
+            sequenceDiagram
+                participant U as User
+                participant M as Mobile App
+                participant B as Backend API
+                participant DB as Database
+
+                U->>M: Tap login button
+                M->>B: POST /auth/login
+                B->>DB: Query user by email
+                DB-->>B: User record
+                B->>B: Validate password
+                alt Valid credentials
+                    B-->>M: 200 OK + JWT token
+                    M-->>U: Navigate to home
+                else Invalid credentials
+                    B-->>M: 401 Unauthorized
+                    M-->>U: Show error message
+                end
+            ```
+
+            Guidelines:
+            - Use participant aliases for readability (U, M, W, B, DB)
+            - Show error/alternate flows with alt/else blocks
+            - Include async operations with activate/deactivate if relevant
+            - Keep diagrams focused on the feature being implemented
 
             ## Architecture Rules
 

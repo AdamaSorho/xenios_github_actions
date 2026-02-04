@@ -249,6 +249,23 @@ jobs:
             2. **Edge case**: ...
             3. **Error case**: ...
 
+            ## Sequence Diagram
+            <!-- Mermaid diagram showing component interactions -->
+            ```mermaid
+            sequenceDiagram
+                participant U as User
+                participant C as Client (Web/Mobile)
+                participant B as Backend API
+                participant DB as Database
+
+                U->>C: [User action]
+                C->>B: [API call]
+                B->>DB: [Database operation]
+                DB-->>B: [Result]
+                B-->>C: [Response]
+                C-->>U: [UI update]
+            ```
+
             ## Dependencies
             <!-- List issue numbers this depends on -->
             Blocked by: #XX, #YY (or "None")
@@ -347,6 +364,44 @@ jobs:
             - Order by dependencies (foundation first)
             - Maximum 50 issues per workflow run (safety limit)
             - Add 1 second delay between issue creations (rate limiting)
+
+            ## Sequence Diagram Guidelines
+
+            Every issue MUST include a Mermaid sequence diagram showing:
+            - The actors involved (User, Mobile, Web, Backend, Database, External APIs)
+            - The flow of the feature from user action to data persistence
+            - Error/alternate paths where relevant
+
+            Diagram conventions:
+            - Use short participant aliases: U (User), M (Mobile), W (Web), B (Backend), DB (Database)
+            - Show request arrows with ->> and response arrows with -->>
+            - Use alt/else blocks for conditional flows
+            - Use loop blocks for repeated operations
+            - Use note blocks for important context
+
+            Example for an authentication feature:
+            ```mermaid
+            sequenceDiagram
+                participant U as User
+                participant M as Mobile
+                participant B as Backend
+                participant DB as Database
+
+                U->>M: Enter credentials
+                M->>B: POST /auth/login
+                B->>DB: SELECT user WHERE email=$1
+                DB-->>B: User row
+                B->>B: bcrypt.Compare(password, hash)
+                alt Valid
+                    B->>B: Generate JWT
+                    B-->>M: 200 {token, refreshToken}
+                    M->>M: Store tokens
+                    M-->>U: Navigate to Home
+                else Invalid
+                    B-->>M: 401 Unauthorized
+                    M-->>U: Show error toast
+                end
+            ```
 
             ## Creating Issues (when mode is 'create' or 'draft')
 

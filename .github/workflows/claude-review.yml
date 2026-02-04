@@ -1,0 +1,385 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+  pull_request_review_comment:
+    types: [created]
+
+  issue_comment:
+    types: [created]
+
+jobs:
+  review-pr:
+    # Run on PR events, or when @claude-review is mentioned in comments
+    if: |
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude-review')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude-review'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for diff analysis
+
+      - name: Get PR details
+        id: pr-details
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let prNumber, prData;
+
+            if (context.eventName === 'pull_request') {
+              prNumber = context.payload.pull_request.number;
+              prData = context.payload.pull_request;
+            } else {
+              // For comment events, get PR number from the issue
+              prNumber = context.payload.issue?.number || context.payload.pull_request?.number;
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              prData = pr;
+            }
+
+            // Get the diff
+            const { data: diff } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              mediaType: { format: 'diff' }
+            });
+
+            // Get changed files
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100
+            });
+
+            const changedFiles = files.map(f => ({
+              filename: f.filename,
+              status: f.status,
+              additions: f.additions,
+              deletions: f.deletions,
+              changes: f.changes
+            }));
+
+            // Extract linked issue from PR body (looks for "Closes #123" or "Fixes #123")
+            const issueMatch = prData.body?.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+            const linkedIssue = issueMatch ? issueMatch[1] : null;
+
+            let issueBody = null;
+            if (linkedIssue) {
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: parseInt(linkedIssue)
+                });
+                issueBody = issue.body;
+              } catch (e) {
+                console.log(`Could not fetch linked issue #${linkedIssue}`);
+              }
+            }
+
+            return {
+              prNumber: prNumber,
+              title: prData.title,
+              body: prData.body || '',
+              author: prData.user.login,
+              baseBranch: prData.base.ref,
+              headBranch: prData.head.ref,
+              changedFiles: changedFiles,
+              linkedIssue: linkedIssue,
+              issueBody: issueBody,
+              diffLength: diff.length
+            };
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Claude Reviews PR
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are a senior code reviewer for the Xenios platform. Review this PR thoroughly and provide actionable feedback.
+
+            ## PR Information
+
+            **PR #${{ fromJSON(steps.pr-details.outputs.result).prNumber }}**: ${{ fromJSON(steps.pr-details.outputs.result).title }}
+            **Author**: ${{ fromJSON(steps.pr-details.outputs.result).author }}
+            **Base**: ${{ fromJSON(steps.pr-details.outputs.result).baseBranch }} ← **Head**: ${{ fromJSON(steps.pr-details.outputs.result).headBranch }}
+
+            **PR Description**:
+            ${{ fromJSON(steps.pr-details.outputs.result).body }}
+
+            **Changed Files** (${{ toJSON(fromJSON(steps.pr-details.outputs.result).changedFiles) }}):
+            Read each changed file to review the actual code changes.
+
+            **Linked Issue**: ${{ fromJSON(steps.pr-details.outputs.result).linkedIssue && format('#{0}', fromJSON(steps.pr-details.outputs.result).linkedIssue) || 'None detected' }}
+            **Issue Requirements**:
+            ${{ fromJSON(steps.pr-details.outputs.result).issueBody || 'No linked issue found - check if PR implements what it claims' }}
+
+            ## Review Checklist
+
+            Score each category 1-5 (1=Critical issues, 3=Minor issues, 5=Excellent):
+
+            ### 1. Spec Compliance (if linked issue exists)
+            - Does the PR implement ALL acceptance criteria from the issue?
+            - Are there any missing requirements?
+            - Are there any extra changes not in the spec (scope creep)?
+
+            ### 2. Architecture & Code Quality
+            - Clean Architecture followed? (Domain → Application → Infrastructure → Presentation)
+            - Dependencies flow inward only?
+            - Domain layer has no external dependencies?
+            - Use cases are thin and delegate properly?
+            - No code duplication?
+            - Proper error handling?
+
+            ### 3. Database Rules (CRITICAL - Auto-fail if violated)
+            - ONLY Backend (Go) accesses database?
+            - NO ORMs used? (GORM, Prisma, TypeORM, Drizzle, Ent are FORBIDDEN)
+            - Raw SQL with pgx/sqlx only?
+            - Parameterized queries used? ($1, $2 - no string concatenation)
+            - Web/Mobile do NOT have any database imports?
+
+            ### 4. Testing
+            - Tests exist for new functionality?
+            - Test files follow convention? (*_test.go, *.test.ts)
+            - Happy path tested?
+            - Edge cases tested?
+            - Error cases tested?
+            - Estimated coverage adequate? (target: 80%)
+
+            ### 5. Security
+            - No hardcoded secrets or API keys?
+            - No SQL injection vulnerabilities?
+            - No XSS vulnerabilities in frontend code?
+            - Input validation present?
+            - Proper authentication/authorization checks?
+
+            ### 6. Sequence Diagram
+            - PR description includes a Mermaid sequence diagram?
+            - Diagram accurately represents the implemented flow?
+            - Diagram shows error/alternate paths?
+
+            ### 7. Documentation
+            - Complex logic has explanatory comments?
+            - Public APIs have documentation?
+            - No excessive/obvious comments (code should be self-documenting)?
+
+            ## Your Task
+
+            1. Read ALL changed files using the Read tool
+            2. For each file, analyze against the checklist above
+            3. Create a structured review with:
+               - Overall verdict: APPROVE or REQUEST_CHANGES
+               - Score for each category (1-5)
+               - Specific issues found (with file:line references)
+               - Suggestions for improvement
+
+            4. Write the review to a file: /tmp/pr-review.md
+
+            ## Review Output Format
+
+            Write to /tmp/pr-review.md:
+
+            ```markdown
+            ## 🔍 Claude Code Review
+
+            **PR**: #[number] - [title]
+            **Verdict**: ✅ APPROVE | ❌ REQUEST_CHANGES
+
+            ### Scores
+
+            | Category | Score | Notes |
+            |----------|-------|-------|
+            | Spec Compliance | X/5 | ... |
+            | Architecture | X/5 | ... |
+            | Database Rules | X/5 | ... |
+            | Testing | X/5 | ... |
+            | Security | X/5 | ... |
+            | Sequence Diagram | X/5 | ... |
+            | Documentation | X/5 | ... |
+            | **Overall** | **X/5** | |
+
+            ### Critical Issues (must fix)
+            - [ ] Issue 1 (`file.go:42`): Description
+            - [ ] Issue 2 (`file.ts:15`): Description
+
+            ### Suggestions (nice to have)
+            - Suggestion 1
+            - Suggestion 2
+
+            ### What's Good ✨
+            - Positive observation 1
+            - Positive observation 2
+
+            ---
+            🤖 Reviewed by Claude | [View workflow run](link)
+            ```
+
+            ## Auto-Approve Criteria
+
+            APPROVE if ALL of these are true:
+            - No critical issues (score 1 in any category)
+            - Database Rules score >= 4 (no violations)
+            - Security score >= 4 (no vulnerabilities)
+            - Overall average score >= 3.5
+            - If linked issue exists, all acceptance criteria are met
+
+            REQUEST_CHANGES if ANY of these are true:
+            - Any score of 1 (critical issue)
+            - Database rules violated (ORM usage, direct DB access from Web/Mobile)
+            - Security vulnerabilities found
+            - Linked issue requirements not fully met
+            - No tests for new functionality
+
+          claude_args: |
+            --max-turns 50
+            --model claude-opus-4-5-20251101
+            --allowedTools Bash,Read,Write,Glob,Grep
+
+      - name: Read Review Results
+        id: read-review
+        run: |
+          if [ -f /tmp/pr-review.md ]; then
+            # Extract verdict from the review
+            if grep -q "✅ APPROVE" /tmp/pr-review.md; then
+              echo "verdict=APPROVE" >> $GITHUB_OUTPUT
+            else
+              echo "verdict=REQUEST_CHANGES" >> $GITHUB_OUTPUT
+            fi
+            echo "review_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "review_exists=false" >> $GITHUB_OUTPUT
+            echo "verdict=COMMENT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post Review Comment
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const prNumber = ${{ fromJSON(steps.pr-details.outputs.result).prNumber }};
+
+            let reviewBody;
+            if (fs.existsSync('/tmp/pr-review.md')) {
+              reviewBody = fs.readFileSync('/tmp/pr-review.md', 'utf8');
+            } else {
+              reviewBody = `## 🔍 Claude Code Review
+
+            **Status**: ⚠️ Review incomplete - check workflow logs for details.
+
+            [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ---
+            🤖 Claude Reviewer`;
+            }
+
+            // Add workflow link to the review
+            reviewBody += `\n\n[View Full Workflow Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            // Determine review event type based on verdict
+            const verdict = '${{ steps.read-review.outputs.verdict }}';
+            let event = 'COMMENT';
+
+            if (verdict === 'APPROVE') {
+              event = 'APPROVE';
+            } else if (verdict === 'REQUEST_CHANGES') {
+              event = 'REQUEST_CHANGES';
+            }
+
+            // Submit the review
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              body: reviewBody,
+              event: event
+            });
+
+            console.log(`Posted ${event} review on PR #${prNumber}`);
+
+      - name: Add Review Label
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = ${{ fromJSON(steps.pr-details.outputs.result).prNumber }};
+            const verdict = '${{ steps.read-review.outputs.verdict }}';
+
+            // Remove old review labels
+            const labelsToRemove = ['review/approved', 'review/changes-requested', 'review/pending'];
+            for (const label of labelsToRemove) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  name: label
+                });
+              } catch (e) {
+                // Label might not exist, ignore
+              }
+            }
+
+            // Add new label based on verdict
+            let newLabel = 'review/pending';
+            if (verdict === 'APPROVE') {
+              newLabel = 'review/approved';
+            } else if (verdict === 'REQUEST_CHANGES') {
+              newLabel = 'review/changes-requested';
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: [newLabel]
+            });
+
+      - name: Post Workflow Summary
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const verdict = '${{ steps.read-review.outputs.verdict }}';
+            const prNumber = ${{ fromJSON(steps.pr-details.outputs.result).prNumber }};
+
+            const verdictEmoji = verdict === 'APPROVE' ? '✅' : verdict === 'REQUEST_CHANGES' ? '❌' : '💬';
+
+            const summary = `## 🔍 Claude PR Review Complete
+
+            | Item | Value |
+            |------|-------|
+            | PR | #${prNumber} |
+            | Verdict | ${verdictEmoji} ${verdict} |
+
+            ${verdict === 'APPROVE' ?
+              '### ✅ Auto-Approved\nThis PR meets all quality criteria and has been automatically approved.' :
+              verdict === 'REQUEST_CHANGES' ?
+              '### ❌ Changes Requested\nPlease address the issues noted in the review before merging.' :
+              '### 💬 Review Posted\nCheck the PR for detailed feedback.'}
+
+            [View PR](${{ github.server_url }}/${{ github.repository }}/pull/${prNumber})
+            `;
+
+            await core.summary
+              .addRaw(summary)
+              .write();

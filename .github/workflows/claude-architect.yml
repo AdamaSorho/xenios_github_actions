@@ -1,0 +1,435 @@
+name: Claude Architect - PRD to Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      prd_url:
+        description: 'URL to PRD document (GitHub raw URL, or public URL)'
+        required: false
+        type: string
+      prd_content:
+        description: 'Paste PRD content directly (if no URL)'
+        required: false
+        type: string
+      mode:
+        description: 'Output mode'
+        required: true
+        type: choice
+        options:
+          - preview # Only outputs plan, no issues created
+          - draft # Creates draft issues for review
+          - create # Creates real issues immediately
+        default: 'create'
+      priority:
+        description: 'Default priority for generated issues'
+        required: false
+        type: choice
+        options:
+          - high
+          - medium
+          - low
+        default: 'medium'
+      batch_action:
+        description: 'Batch action (for ongoing projects)'
+        required: false
+        type: choice
+        options:
+          - new # Start new project from PRD
+          - next # Create next batch for existing project
+          - amend # Create amendments from PRD update
+          - status # Report current status
+        default: 'new'
+      master_plan_issue:
+        description: 'Master Plan issue number (for next/status/amend actions)'
+        required: false
+        type: string
+      original_prd_url:
+        description: 'Original PRD URL (for amend action)'
+        required: false
+        type: string
+      updated_prd_url:
+        description: 'Updated PRD URL (for amend action)'
+        required: false
+        type: string
+
+  issue_comment:
+    types: [created]
+
+jobs:
+  architect-analyze:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.issue.labels.*.name, 'architect-master-plan') &&
+       contains(github.event.comment.body, '@claude-architect'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Parse comment command
+        id: parse-command
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            let action = 'status';
+
+            if (comment.includes('@claude-architect next')) {
+              action = 'next';
+            } else if (comment.includes('@claude-architect status')) {
+              action = 'status';
+            } else if (comment.includes('@claude-architect amend')) {
+              action = 'amend';
+            }
+
+            return {
+              action: action,
+              masterPlanIssue: context.payload.issue.number.toString()
+            };
+
+      - name: Fetch PRD Content (if URL provided)
+        id: fetch-prd
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.prd_url != ''
+        run: |
+          echo "Fetching PRD from: ${{ github.event.inputs.prd_url }}"
+          curl -sL "${{ github.event.inputs.prd_url }}" -o prd_content.txt
+          echo "prd_fetched=true" >> $GITHUB_OUTPUT
+
+      - name: Fetch Amendment PRDs (if amend action)
+        id: fetch-amendment-prds
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.batch_action == 'amend'
+        run: |
+          if [ -n "${{ github.event.inputs.original_prd_url }}" ]; then
+            curl -sL "${{ github.event.inputs.original_prd_url }}" -o original_prd.txt
+          fi
+          if [ -n "${{ github.event.inputs.updated_prd_url }}" ]; then
+            curl -sL "${{ github.event.inputs.updated_prd_url }}" -o updated_prd.txt
+          fi
+          echo "amendment_prds_fetched=true" >> $GITHUB_OUTPUT
+
+      - name: Ensure labels exist
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = [
+              { name: 'claude-implement', color: '7057ff', description: 'Issues for Claude Builder to implement' },
+              { name: 'architect-master-plan', color: '0e8a16', description: 'Master Plan tracking issues' },
+              { name: 'amendment', color: 'fbca04', description: 'PRD amendment issues' },
+              { name: 'batch/1', color: 'c5def5', description: 'Batch 1' },
+              { name: 'batch/2', color: 'c5def5', description: 'Batch 2' },
+              { name: 'batch/3', color: 'c5def5', description: 'Batch 3' },
+              { name: 'batch/4', color: 'c5def5', description: 'Batch 4' },
+              { name: 'batch/5', color: 'c5def5', description: 'Batch 5' },
+              { name: 'size/XS', color: 'bfdadc', description: 'Extra small (<4 hours)' },
+              { name: 'size/S', color: 'bfdadc', description: 'Small (4-8 hours)' },
+              { name: 'size/M', color: 'bfdadc', description: 'Medium (1-2 days)' },
+              { name: 'size/L', color: 'bfdadc', description: 'Large (3-5 days)' },
+              { name: 'priority/high', color: 'd93f0b', description: 'High priority' },
+              { name: 'priority/medium', color: 'fbca04', description: 'Medium priority' },
+              { name: 'priority/low', color: '0e8a16', description: 'Low priority' }
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+                console.log(`Created label: ${label.name}`);
+              } catch (error) {
+                if (error.status === 422) {
+                  console.log(`Label already exists: ${label.name}`);
+                } else {
+                  console.error(`Error creating label ${label.name}:`, error.message);
+                }
+              }
+            }
+
+      - name: Claude Architect Analysis
+        id: claude-architect
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are an AI Architect. Your job is to analyze product requirements and create well-structured GitHub issues for implementation.
+
+            ## Context
+
+            Repository: ${{ github.repository }}
+            Event: ${{ github.event_name }}
+            Mode: ${{ github.event.inputs.mode || 'preview' }}
+            Batch Action: ${{ github.event.inputs.batch_action || (github.event_name == 'issue_comment' && fromJSON(steps.parse-command.outputs.result).action) || 'new' }}
+            Priority: ${{ github.event.inputs.priority || 'medium' }}
+            Master Plan Issue: ${{ github.event.inputs.master_plan_issue || (github.event_name == 'issue_comment' && fromJSON(steps.parse-command.outputs.result).masterPlanIssue) || '' }}
+
+            ## Input
+
+            ${{ github.event.inputs.prd_content || '' }}
+            ${{ steps.fetch-prd.outputs.prd_fetched == 'true' && 'PRD content loaded from file: prd_content.txt - Read this file.' || '' }}
+            ${{ github.event_name == 'issue_comment' && format('Comment trigger on Master Plan issue #{0}. Read the issue body to understand the project state.', github.event.issue.number) || '' }}
+
+            ## Your Task Based on Batch Action
+
+            ### If action is 'new':
+            1. Analyze the PRD thoroughly
+            2. Create a Master Plan issue FIRST with label: architect-master-plan
+               - Title: "🏗️ Master Plan: [PRD Title]"
+               - Include all batches overview with checkboxes
+               - Document ALL planned issues across all batches
+            3. Create ONLY Batch 1 (foundation) issues
+               - Add labels: claude-implement, batch/1, size/[XS|S|M|L], priority/${{ github.event.inputs.priority || 'medium' }}
+               - Each issue follows the template below
+            4. Update the Master Plan with created issue numbers
+
+            ### If action is 'next':
+            1. Read the Master Plan issue to understand current state
+            2. Find the next pending batch (marked with ⏳)
+            3. Create issues for that batch only
+            4. Update the Master Plan:
+               - Mark previous batch as complete (✅)
+               - Mark new batch as in progress (🔄)
+               - Add new issue numbers to the batch table
+
+            ### If action is 'amend':
+            1. Read both original_prd.txt and updated_prd.txt
+            2. Identify what changed between the two PRDs
+            3. Find which existing issues are affected
+            4. Create amendment issues that reference the originals
+               - Title: "[Amendment] Brief description of change"
+               - Add labels: claude-implement, amendment, size/[XS|S|M|L]
+               - Include "Amends: #XX" in the body
+
+            ### If action is 'status':
+            1. Read the Master Plan issue
+            2. Check status of all linked issues using gh CLI
+            3. Post a comment with current progress summary
+
+            ## Issue Template (for new and next actions)
+
+            ```markdown
+            ## Summary
+            <!-- One-sentence description -->
+
+            ## User Story
+            As a [role], I want [capability] so that [benefit].
+
+            ## Acceptance Criteria
+            - [ ] Criterion 1
+            - [ ] Criterion 2
+            - [ ] Criterion 3
+
+            ## Technical Notes
+            <!-- Architecture guidance, API contracts, data models -->
+
+            ## Affected Apps
+            - [ ] Backend (Go)
+            - [ ] Web (Next.js)
+            - [ ] Mobile (React Native)
+            - [ ] Shared packages
+
+            ## Test Scenarios
+            1. **Happy path**: ...
+            2. **Edge case**: ...
+            3. **Error case**: ...
+
+            ## Dependencies
+            <!-- List issue numbers this depends on -->
+            Blocked by: #XX, #YY (or "None")
+
+            ## Scope
+            Size: [XS|S|M|L]
+
+            ---
+            🤖 Generated by Claude Architect | Batch X
+            ```
+
+            ## Amendment Issue Template (for amend action)
+
+            ```markdown
+            ## [Amendment] Brief description
+
+            **Amends**: #[original_issue_number]
+            **PRD Change Date**: [today's date]
+
+            ## Change Summary
+            **Original scope**: [what the original issue specified]
+            **Change**: [what's being added/modified/removed]
+
+            ## New/Modified Acceptance Criteria
+            - [ ] New criterion 1
+            - [ ] Modified criterion (was: "old text")
+
+            ## Technical Impact
+            - Database changes: [yes/no, details]
+            - API changes: [yes/no, details]
+            - UI changes: [yes/no, details]
+
+            ## Dependencies
+            - Requires #[original] to be completed first
+            - Blocked by: #XX (if any)
+
+            ## Scope
+            Size: [XS|S|M|L]
+
+            ---
+            🤖 Generated by Claude Architect (PRD Amendment)
+            ```
+
+            ## Master Plan Issue Template
+
+            ```markdown
+            # 🏗️ Master Plan: [PRD Title]
+
+            **Generated from**: [PRD source]
+            **Generated at**: [timestamp]
+            **Total Issues**: [N]
+            **Batches**: [M]
+
+            ## Progress
+
+            - [ ] **Batch 1: [Name]** (Issues #X-#Y) 🔄 In Progress
+            - [ ] **Batch 2: [Name]** (Issues pending) ⏳ Waiting
+            - [ ] **Batch 3: [Name]** (Issues pending) ⏳ Waiting
+
+            ## Batch Details
+
+            ### Batch 1: [Name] (Created)
+            | Issue | Title | Status |
+            |-------|-------|--------|
+            | #X | Title | 🔄 Open |
+            | #Y | Title | 🔄 Open |
+
+            ### Batch 2: [Name] (Planned)
+            | Title | Dependencies |
+            |-------|--------------|
+            | Future issue 1 | #X |
+            | Future issue 2 | #X, #Y |
+
+            ---
+
+            ## Commands
+            - Comment `@claude-architect next` to create the next batch
+            - Comment `@claude-architect status` to get current progress
+
+            ---
+            🤖 Generated by Claude Architect
+            ```
+
+            ## Architecture Rules (from CLAUDE.md)
+
+            - Follow Clean Architecture (Domain → Application → Infrastructure → Presentation)
+            - Backend (Go) accesses database; Web/Mobile call Backend API only
+            - No ORMs - raw SQL with pgx/sqlx
+            - TDD required - 80% coverage minimum
+            - All issues must include test scenarios
+
+            ## Issue Creation Guidelines
+
+            - Each issue should be 1-3 days of work (Small/Medium scope)
+            - Group related work logically
+            - Order by dependencies (foundation first)
+            - Maximum 50 issues per workflow run (safety limit)
+            - Add 1 second delay between issue creations (rate limiting)
+
+            ## Creating Issues (when mode is 'create' or 'draft')
+
+            Use the GitHub CLI to create issues:
+            ```bash
+            gh issue create \
+              --title "TITLE" \
+              --body "BODY" \
+              --label "claude-implement,batch/1,size/M,priority/medium"
+            ```
+
+            For the Master Plan issue:
+            ```bash
+            gh issue create \
+              --title "🏗️ Master Plan: PROJECT_NAME" \
+              --body "BODY" \
+              --label "architect-master-plan"
+            ```
+
+            To update the Master Plan with issue numbers:
+            ```bash
+            gh issue edit ISSUE_NUMBER --body "UPDATED_BODY"
+            ```
+
+            ## Mode Handling
+
+            Mode: ${{ github.event.inputs.mode || 'preview' }}
+
+            - If mode is 'preview': Output a markdown summary of all planned issues. Do NOT create any issues.
+            - If mode is 'draft': Create issues but add "[DRAFT]" prefix to titles
+            - If mode is 'create': Create real issues
+
+          claude_args: |
+            --max-turns 100
+            --model claude-opus-4-5-20251101
+            --allowedTools Bash,Read,Write,Glob,Grep
+
+      - name: Post Summary Comment
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const summary = `## 🏗️ Architect Action Complete
+
+            **Action**: \`${{ fromJSON(steps.parse-command.outputs.result).action || 'analyze' }}\`
+            **Mode**: \`${{ github.event.inputs.mode || 'preview' }}\`
+
+            Check the workflow logs for full details.
+
+            [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ---
+            🤖 Claude Architect`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+      - name: Post Workflow Summary
+        if: always() && github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const summary = `## 🏗️ Claude Architect - Workflow Complete
+
+            | Setting | Value |
+            |---------|-------|
+            | Mode | \`${{ github.event.inputs.mode || 'preview' }}\` |
+            | Batch Action | \`${{ github.event.inputs.batch_action || 'new' }}\` |
+            | Priority | \`${{ github.event.inputs.priority || 'medium' }}\` |
+
+            ### Next Steps
+
+            ${('${{ github.event.inputs.mode }}' === 'preview') ?
+              '- Review the analysis in the workflow logs\n- Re-run with `mode: create` to create issues' :
+              '- Check the created issues in the Issues tab\n- The Builder workflow will automatically pick up `claude-implement` labeled issues'}
+
+            [View Full Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+
+            await core.summary
+              .addRaw(summary)
+              .write();

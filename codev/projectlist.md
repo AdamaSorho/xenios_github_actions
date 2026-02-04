@@ -121,11 +121,24 @@ projects:
     dependencies: []
     tags: [infrastructure, ci-cd, automation, ai]
     notes: "Foundation for all future development automation. Plan ready for review."
+
+  - id: "0003"
+    title: "AI Architect Workflow"
+    summary: "GitHub Action with Claude Code that reads PRD documents and automatically creates well-structured implementation issues for the Builder workflow"
+    status: implemented
+    priority: high
+    files:
+      spec: codev/specs/0003-architect-workflow.md
+      plan: codev/plans/0003-architect-workflow.md
+      review: null
+    dependencies: ["0002"]
+    tags: [infrastructure, ci-cd, automation, ai, architect]
+    notes: "Implementation complete 2026-02-04. Ready for commit."
 ```
 
 ## Next Available Number
 
-**0003** - Reserve this number for your next project
+**0004** - Reserve this number for your next project
 
 ---
 

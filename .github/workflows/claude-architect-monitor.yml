@@ -1,0 +1,287 @@
+name: Claude Architect - Batch Monitor
+
+on:
+  issues:
+    types: [closed]
+
+jobs:
+  check-batch-completion:
+    # Only run for issues created by the architect (has claude-implement label)
+    if: contains(github.event.issue.labels.*.name, 'claude-implement')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Find Master Plan Issue
+        id: find-master
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Find the Master Plan issue that tracks batches
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'architect-master-plan',
+              state: 'open',
+              per_page: 10
+            });
+
+            if (issues.data.length === 0) {
+              console.log('No open master plan issue found');
+              return { found: false };
+            }
+
+            // Get the most recent master plan
+            const masterPlan = issues.data[0];
+            console.log(`Found Master Plan: #${masterPlan.number} - ${masterPlan.title}`);
+
+            return {
+              found: true,
+              number: masterPlan.number,
+              title: masterPlan.title,
+              body: masterPlan.body
+            };
+
+      - name: Extract Batch Issues
+        id: extract-batch
+        if: fromJSON(steps.find-master.outputs.result).found == true
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const master = ${{ steps.find-master.outputs.result }};
+            const body = master.body;
+            const closedIssueNumber = context.payload.issue.number;
+
+            console.log(`Checking if issue #${closedIssueNumber} completion affects any batch...`);
+
+            // Find which batch the closed issue belongs to
+            // Look for batch labels on the closed issue
+            const closedIssue = context.payload.issue;
+            const batchLabel = closedIssue.labels.find(l => l.name.startsWith('batch/'));
+
+            if (!batchLabel) {
+              console.log('Closed issue has no batch label, skipping');
+              return { checkBatch: false };
+            }
+
+            const batchNumber = batchLabel.name.split('/')[1];
+            console.log(`Closed issue belongs to batch ${batchNumber}`);
+
+            // Extract all issue numbers from the batch section in Master Plan
+            // Looking for pattern: | #123 | Title | Status |
+            const batchSectionRegex = new RegExp(`### Batch ${batchNumber}[^#]*?((?:\\| #\\d+[^|]*\\|[^|]*\\|[^|]*\\|\\n?)+)`, 'i');
+            const batchMatch = body.match(batchSectionRegex);
+
+            if (!batchMatch) {
+              console.log(`Could not find Batch ${batchNumber} section in Master Plan`);
+              return { checkBatch: false };
+            }
+
+            // Extract issue numbers from the table
+            const issueNumbers = [...batchMatch[1].matchAll(/#(\d+)/g)].map(m => parseInt(m[1]));
+            console.log(`Found issues in batch ${batchNumber}: ${issueNumbers.join(', ')}`);
+
+            return {
+              checkBatch: true,
+              batchNumber: batchNumber,
+              issueNumbers: issueNumbers,
+              masterNumber: master.number
+            };
+
+      - name: Check If All Batch Issues Closed
+        id: check-completion
+        if: fromJSON(steps.extract-batch.outputs.result).checkBatch == true
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const batchInfo = ${{ steps.extract-batch.outputs.result }};
+            const issueNumbers = batchInfo.issueNumbers;
+
+            console.log(`Checking status of ${issueNumbers.length} issues in batch ${batchInfo.batchNumber}...`);
+
+            let allClosed = true;
+            let closedCount = 0;
+            const issueStatuses = [];
+
+            for (const num of issueNumbers) {
+              try {
+                const issue = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num
+                });
+
+                const isClosed = issue.data.state === 'closed';
+                issueStatuses.push({
+                  number: num,
+                  title: issue.data.title,
+                  state: issue.data.state
+                });
+
+                if (isClosed) {
+                  closedCount++;
+                } else {
+                  allClosed = false;
+                }
+
+                console.log(`  #${num}: ${issue.data.state}`);
+              } catch (error) {
+                console.error(`  #${num}: Error fetching - ${error.message}`);
+                allClosed = false;
+              }
+            }
+
+            console.log(`\nBatch ${batchInfo.batchNumber}: ${closedCount}/${issueNumbers.length} issues closed`);
+            console.log(`All closed: ${allClosed}`);
+
+            return {
+              allClosed: allClosed,
+              closedCount: closedCount,
+              totalCount: issueNumbers.length,
+              batchNumber: batchInfo.batchNumber,
+              masterNumber: batchInfo.masterNumber,
+              issueStatuses: issueStatuses
+            };
+
+      - name: Notify Batch Complete
+        if: fromJSON(steps.check-completion.outputs.result).allClosed == true
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const result = ${{ steps.check-completion.outputs.result }};
+
+            const completedIssues = result.issueStatuses
+              .map(i => `- [x] #${i.number} - ${i.title}`)
+              .join('\n');
+
+            const notification = `## 🎉 Batch ${result.batchNumber} Complete!
+
+            All **${result.totalCount}** issues in Batch ${result.batchNumber} have been closed.
+
+            ### Completed Issues
+            ${completedIssues}
+
+            ---
+
+            ### Ready for Next Batch?
+
+            To create the next batch of issues, you can either:
+
+            1. **Comment on this issue:**
+               \`\`\`
+               @claude-architect next
+               \`\`\`
+
+            2. **Trigger manually via Actions:**
+               [Create Next Batch](${{ github.server_url }}/${{ github.repository }}/actions/workflows/claude-architect.yml)
+               - Set \`batch_action\` to \`next\`
+               - Set \`master_plan_issue\` to \`${result.masterNumber}\`
+
+            ---
+            🤖 Automated batch completion notification`;
+
+            // Comment on the Master Plan issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: result.masterNumber,
+              body: notification
+            });
+
+            console.log(`Posted completion notification on Master Plan #${result.masterNumber}`);
+
+      - name: Update Master Plan Checkboxes
+        if: fromJSON(steps.check-completion.outputs.result).allClosed == true
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const result = ${{ steps.check-completion.outputs.result }};
+            const masterNumber = result.masterNumber;
+            const batchNumber = result.batchNumber;
+
+            // Get current Master Plan body
+            const masterPlan = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: masterNumber
+            });
+
+            let body = masterPlan.data.body;
+
+            // Update the progress checkbox for completed batch: 🔄 → ✅
+            // Pattern: - [ ] **Batch N: ...** (...) 🔄 In Progress
+            const inProgressPattern = new RegExp(
+              `(- \\[[ x]\\] \\*\\*Batch ${batchNumber}:[^*]*\\*\\*[^)]*\\)) 🔄 In Progress`,
+              'i'
+            );
+            body = body.replace(inProgressPattern, '$1 ✅ Complete');
+
+            // Also update individual issue statuses in the batch table
+            // Pattern: | #123 | Title | 🔄 Open | → | #123 | Title | ✅ Closed |
+            for (const issue of result.issueStatuses) {
+              const issuePattern = new RegExp(
+                `(\\| #${issue.number} \\|[^|]*\\|) [^|]* \\|`,
+                'g'
+              );
+              body = body.replace(issuePattern, '$1 ✅ Closed |');
+            }
+
+            // Find next pending batch and mark as in progress
+            // Pattern: - [ ] **Batch N: ...** (...) ⏳ Waiting
+            const nextBatch = parseInt(batchNumber) + 1;
+            const waitingPattern = new RegExp(
+              `(- \\[ \\] \\*\\*Batch ${nextBatch}:[^*]*\\*\\*[^)]*\\)) ⏳ Waiting`,
+              'i'
+            );
+            if (waitingPattern.test(body)) {
+              body = body.replace(waitingPattern, '$1 🔄 Ready for creation');
+            }
+
+            // Update the Master Plan issue
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: masterNumber,
+              body: body
+            });
+
+            console.log(`Updated Master Plan #${masterNumber} - Batch ${batchNumber} marked complete`);
+
+      - name: Post Progress Update (Partial Completion)
+        if: |
+          fromJSON(steps.check-completion.outputs.result).checkBatch == true &&
+          fromJSON(steps.check-completion.outputs.result).allClosed == false
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const result = ${{ steps.check-completion.outputs.result }};
+            const closedIssue = context.payload.issue;
+
+            // Only post if we're past 50% completion to avoid noise
+            const completionPct = (result.closedCount / result.totalCount) * 100;
+
+            if (completionPct >= 50 && completionPct < 100) {
+              const remaining = result.totalCount - result.closedCount;
+
+              const update = `### 📊 Batch ${result.batchNumber} Progress Update
+
+              Issue #${closedIssue.number} closed.
+
+              **Progress**: ${result.closedCount}/${result.totalCount} (${Math.round(completionPct)}%)
+              **Remaining**: ${remaining} issue${remaining !== 1 ? 's' : ''}
+
+              ---
+              🤖 Automated progress update`;
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: result.masterNumber,
+                body: update
+              });
+            }

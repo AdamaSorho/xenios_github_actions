@@ -16,7 +16,8 @@ This document describes the complete GitHub Actions workflow for the Xenios plat
 │  CLAUDE ARCHITECT   │  Analyzes requirements, creates issues in batches
 │  claude-architect   │
 └─────────┬───────────┘
-          │ Creates issues with
+          │ Creates Master Plan +
+          │ Batch 1 issues with
           │ label: claude-implement
           ▼
 ┌─────────────────────┐
@@ -42,7 +43,36 @@ This document describes the complete GitHub Actions workflow for the Xenios plat
 │   deploy-backend    │
 │   deploy-web        │
 │   deploy-mobile     │
-└─────────────────────┘
+└─────────┬───────────┘
+          │ Issue closed
+          ▼
+┌─────────────────────────┐
+│  ARCHITECT MONITOR      │  Detects batch completion
+│  claude-architect-      │
+│  monitor                │
+└─────────┬───────────────┘
+          │ All batch issues closed?
+          │
+    ┌─────┴─────┐
+    │           │
+    ▼           ▼
+  Yes          No
+    │           │
+    ▼           └──► (wait for more issues to close)
+┌─────────────────────┐
+│ Notify: "Batch N    │
+│ complete! Ready     │
+│ for next batch?"    │
+└─────────┬───────────┘
+          │ Human comments:
+          │ @claude-architect next
+          ▼
+┌─────────────────────┐
+│  CLAUDE ARCHITECT   │  Creates next batch of issues
+│  (next batch)       │
+└─────────┬───────────┘
+          │
+          └──────────► (cycle repeats until all batches done)
 ```
 
 ## Workflows

@@ -125,7 +125,7 @@ projects:
   - id: "0003"
     title: "AI Architect Workflow"
     summary: "GitHub Action with Claude Code that reads PRD documents and automatically creates well-structured implementation issues for the Builder workflow"
-    status: implemented
+    status: committed
     priority: high
     files:
       spec: codev/specs/0003-architect-workflow.md

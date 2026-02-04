@@ -81,3 +81,4 @@ android/
 
 # Fly.io
 fly.staging.toml
+.env.github.secrets

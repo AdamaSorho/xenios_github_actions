@@ -357,6 +357,14 @@ jobs:
             - TDD required - 80% coverage minimum
             - All issues must include test scenarios
 
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in a CI environment with NO human interaction.
+            - NEVER stop to ask for clarification - make reasonable assumptions
+            - ALWAYS document assumptions in the Master Plan issue
+            - If PRD is ambiguous, choose the most common/standard approach
+            - If you encounter a blocker, document it and proceed with what you can
+
             ## Issue Creation Guidelines
 
             - Each issue should be 1-3 days of work (Small/Medium scope)

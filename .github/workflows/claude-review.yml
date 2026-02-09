@@ -183,6 +183,13 @@ jobs:
             - Public APIs have documentation?
             - No excessive/obvious comments (code should be self-documenting)?
 
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in a CI environment with NO human interaction.
+            - NEVER stop to ask for clarification - review with what you have
+            - If you cannot determine something, note it as "Unable to verify" in your review
+            - ALWAYS complete the review and post your verdict
+
             ## Your Task
 
             1. Read ALL changed files using the Read tool

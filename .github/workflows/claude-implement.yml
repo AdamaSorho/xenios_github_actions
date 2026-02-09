@@ -128,8 +128,17 @@ jobs:
             1. Check existing project files (package.json, go.mod, .nvmrc)
             2. Use WebSearch to verify current LTS/stable versions
             3. Check official docs (nodejs.org, go.dev, npmjs.com)
-            4. If uncertain, post a comment on the issue asking for clarification
-               before proceeding, or document your assumption in the PR
+            4. If uncertain, make a reasonable choice using the latest stable/LTS
+               version and document your assumption in the PR description
+
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in a CI environment with NO human interaction.
+            - NEVER stop to ask for clarification - make reasonable assumptions
+            - ALWAYS document assumptions in the PR description
+            - If requirements are ambiguous, choose the most common/standard approach
+            - If you encounter a blocker, document it in a PR comment and implement
+              as much as possible
           claude_args: |
             --max-turns 50
             --model claude-opus-4-5-20251101

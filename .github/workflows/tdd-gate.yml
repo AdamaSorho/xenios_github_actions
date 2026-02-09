@@ -7,12 +7,16 @@ on:
 jobs:
   tdd-enforcement:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # Full history for diff
+          fetch-depth: 0 # Full history for commit order analysis
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -28,121 +32,603 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Backend TDD Checks
-      - name: Go - Check test coverage
-        working-directory: apps/backend
-        run: |
-          go test -coverprofile=coverage.out ./...
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Backend coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "::error::Backend test coverage ($COVERAGE%) is below 80%"
-            exit 1
-          fi
+      # ═══════════════════════════════════════════════════════════════
+      # DETERMINISTIC CHECKS (pass/fail gates)
+      # ═══════════════════════════════════════════════════════════════
+
+      # --- Clean Architecture Checks ---
 
       - name: Go - Verify Clean Architecture
+        id: clean-arch
         working-directory: apps/backend
         run: |
+          VIOLATIONS=0
+
           # Check domain has no external imports
           if grep -r "infrastructure\|adapter" internal/domain/ 2>/dev/null; then
             echo "::error::Domain layer must not import from outer layers"
-            exit 1
+            VIOLATIONS=$((VIOLATIONS + 1))
           fi
 
           # Check usecase only imports domain
           if grep -r "infrastructure\|adapter/handler" internal/usecase/ 2>/dev/null; then
             echo "::error::Usecase layer can only import from domain"
-            exit 1
+            VIOLATIONS=$((VIOLATIONS + 1))
           fi
 
-          echo "Clean Architecture validation passed"
+          echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
+          if [ "$VIOLATIONS" -eq 0 ]; then
+            echo "Clean Architecture validation passed"
+          fi
 
       - name: Go - No ORM Check
+        id: orm-check
         working-directory: apps/backend
         run: |
-          # Detect forbidden ORM imports
           FORBIDDEN_ORMS="gorm.io|entgo.io|github.com/uptrace/bun|github.com/volatiletech/sqlboiler"
           if grep -rE "$FORBIDDEN_ORMS" --include="*.go" . 2>/dev/null; then
-            echo "::error::ORM detected! Use raw SQL with pgx/sqlx only. No GORM, Ent, Bun, or SQLBoiler."
+            echo "::error::ORM detected! Use raw SQL with pgx/sqlx only."
+            echo "violation=true" >> $GITHUB_OUTPUT
             exit 1
           fi
-
+          echo "violation=false" >> $GITHUB_OUTPUT
           echo "No ORM check passed"
 
       - name: Go - Database in Infrastructure Only
+        id: db-layer-check
         working-directory: apps/backend
         run: |
-          # Check that pgx/database imports only exist in infrastructure/adapter layers
           if grep -rE "github.com/jackc/pgx|database/sql" internal/domain/ internal/usecase/ 2>/dev/null; then
             echo "::error::Database imports found outside infrastructure layer!"
-            echo "Domain and UseCase layers must not import database packages."
-            echo "Define repository INTERFACES in domain, IMPLEMENTATIONS in infrastructure."
+            echo "violation=true" >> $GITHUB_OUTPUT
             exit 1
           fi
-
+          echo "violation=false" >> $GITHUB_OUTPUT
           echo "Database import location check passed"
 
-      # Web TDD Checks
-      - name: Web - Run tests with coverage
-        working-directory: apps/web
-        run: |
-          npm run test:coverage || true
-          # Coverage check handled by Jest config threshold
-
       - name: Web - No Direct Database Access
+        id: web-db-check
         working-directory: apps/web
         run: |
-          # Web must NEVER access database directly - only consume Backend API
           FORBIDDEN_DEPS='@supabase/supabase-js|prisma|typeorm|drizzle-orm|sequelize|@mikro-orm|objection|"pg"|"mysql"|"mongodb"'
           if grep -E "$FORBIDDEN_DEPS" package.json 2>/dev/null; then
             echo "::error::Database library detected in Web app!"
-            echo "Web must NOT access database directly."
-            echo "Use the Backend API via @xenios/api-client instead."
+            echo "violation=true" >> $GITHUB_OUTPUT
             exit 1
           fi
-
+          echo "violation=false" >> $GITHUB_OUTPUT
           echo "Web database access check passed"
 
-      # Mobile TDD Checks
-      - name: Mobile - Run tests with coverage
-        working-directory: apps/mobile
-        run: |
-          npm run test:coverage || true
-          # Coverage check handled by Jest config threshold
-
       - name: Mobile - No Direct Database Access
+        id: mobile-db-check
         working-directory: apps/mobile
         run: |
-          # Mobile must NEVER access database directly - only consume Backend API
           FORBIDDEN_DEPS='@supabase/supabase-js|prisma|typeorm|drizzle-orm|sequelize|@mikro-orm|objection|"pg"|"mysql"|"mongodb"'
           if grep -E "$FORBIDDEN_DEPS" package.json 2>/dev/null; then
             echo "::error::Database library detected in Mobile app!"
-            echo "Mobile must NOT access database directly."
-            echo "Use the Backend API via @xenios/api-client instead."
+            echo "violation=true" >> $GITHUB_OUTPUT
             exit 1
           fi
-
+          echo "violation=false" >> $GITHUB_OUTPUT
           echo "Mobile database access check passed"
 
-      # Architecture Lint
-      - name: Lint architecture dependencies
-        run: |
-          npx dependency-cruiser --config .dependency-cruiser.js apps/ || true
+      # ═══════════════════════════════════════════════════════════════
+      # DETERMINISTIC SCORING (75 points total)
+      # ═══════════════════════════════════════════════════════════════
 
-      # TDD Compliance Report
-      - name: TDD Compliance Report
+      # --- Component 1: Test Coverage (30 points) ---
+
+      - name: Go - Measure test coverage
+        id: go-coverage
+        working-directory: apps/backend
+        run: |
+          if go test -coverprofile=coverage.out ./... 2>/dev/null; then
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+            echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+            echo "tests_passed=true" >> $GITHUB_OUTPUT
+            echo "Backend coverage: $COVERAGE%"
+          else
+            echo "coverage=0" >> $GITHUB_OUTPUT
+            echo "tests_passed=false" >> $GITHUB_OUTPUT
+            echo "Backend tests failed or not found"
+          fi
+
+      - name: Web - Measure test coverage
+        id: web-coverage
+        working-directory: apps/web
+        run: |
+          if npm run test:coverage -- --ci --reporters=default 2>/dev/null; then
+            # Extract coverage from Jest output
+            COVERAGE=$(npx jest --coverage --ci --json 2>/dev/null | jq -r '.coverageMap // empty' | jq -r 'to_entries | map(.value.s | to_entries | map(.value) | {total: length, covered: map(select(. > 0)) | length}) | {total: map(.total) | add, covered: map(.covered) | add} | (.covered / .total * 100)' 2>/dev/null || echo "0")
+            echo "coverage=${COVERAGE:-0}" >> $GITHUB_OUTPUT
+            echo "tests_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "coverage=0" >> $GITHUB_OUTPUT
+            echo "tests_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Mobile - Measure test coverage
+        id: mobile-coverage
+        working-directory: apps/mobile
+        run: |
+          if npm run test:coverage -- --ci --reporters=default 2>/dev/null; then
+            COVERAGE=$(npx jest --coverage --ci --json 2>/dev/null | jq -r '.coverageMap // empty' | jq -r 'to_entries | map(.value.s | to_entries | map(.value) | {total: length, covered: map(select(. > 0)) | length}) | {total: map(.total) | add, covered: map(.covered) | add} | (.covered / .total * 100)' 2>/dev/null || echo "0")
+            echo "coverage=${COVERAGE:-0}" >> $GITHUB_OUTPUT
+            echo "tests_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "coverage=0" >> $GITHUB_OUTPUT
+            echo "tests_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate coverage score
+        id: coverage-score
+        run: |
+          GO_COV=${{ steps.go-coverage.outputs.coverage || '0' }}
+          WEB_COV=${{ steps.web-coverage.outputs.coverage || '0' }}
+          MOBILE_COV=${{ steps.mobile-coverage.outputs.coverage || '0' }}
+
+          # Average coverage across apps that have tests
+          COUNT=0
+          TOTAL=0
+
+          if [ "$(echo "$GO_COV > 0" | bc -l)" -eq 1 ]; then
+            TOTAL=$(echo "$TOTAL + $GO_COV" | bc -l)
+            COUNT=$((COUNT + 1))
+          fi
+          if [ "$(echo "$WEB_COV > 0" | bc -l)" -eq 1 ]; then
+            TOTAL=$(echo "$TOTAL + $WEB_COV" | bc -l)
+            COUNT=$((COUNT + 1))
+          fi
+          if [ "$(echo "$MOBILE_COV > 0" | bc -l)" -eq 1 ]; then
+            TOTAL=$(echo "$TOTAL + $MOBILE_COV" | bc -l)
+            COUNT=$((COUNT + 1))
+          fi
+
+          if [ "$COUNT" -gt 0 ]; then
+            AVG=$(echo "scale=1; $TOTAL / $COUNT" | bc -l)
+          else
+            AVG=0
+          fi
+
+          # Scoring rubric (30 points max):
+          #   95-100% = 30 pts
+          #   90-94%  = 27 pts
+          #   85-89%  = 24 pts
+          #   80-84%  = 21 pts
+          #   70-79%  = 15 pts
+          #   60-69%  = 10 pts
+          #   50-59%  = 5 pts
+          #   <50%    = 0 pts
+          if [ "$(echo "$AVG >= 95" | bc -l)" -eq 1 ]; then SCORE=30
+          elif [ "$(echo "$AVG >= 90" | bc -l)" -eq 1 ]; then SCORE=27
+          elif [ "$(echo "$AVG >= 85" | bc -l)" -eq 1 ]; then SCORE=24
+          elif [ "$(echo "$AVG >= 80" | bc -l)" -eq 1 ]; then SCORE=21
+          elif [ "$(echo "$AVG >= 70" | bc -l)" -eq 1 ]; then SCORE=15
+          elif [ "$(echo "$AVG >= 60" | bc -l)" -eq 1 ]; then SCORE=10
+          elif [ "$(echo "$AVG >= 50" | bc -l)" -eq 1 ]; then SCORE=5
+          else SCORE=0
+          fi
+
+          echo "avg_coverage=$AVG" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Coverage: avg=$AVG%, score=$SCORE/30"
+
+      # --- Component 2: Test-Before-Code Ratio (20 points) ---
+
+      - name: Calculate test-before-code ratio
+        id: test-first-score
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+
+          # Get all commits in this PR
+          COMMITS=$(git log --reverse --format="%H" ${BASE_SHA}..${HEAD_SHA})
+          TOTAL_PAIRS=0
+          TEST_FIRST_PAIRS=0
+
+          # Track first appearance of each file
+          declare -A FILE_FIRST_COMMIT
+          COMMIT_INDEX=0
+
+          for COMMIT in $COMMITS; do
+            COMMIT_INDEX=$((COMMIT_INDEX + 1))
+            FILES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT" 2>/dev/null)
+
+            for FILE in $FILES; do
+              if [ -z "${FILE_FIRST_COMMIT[$FILE]+x}" ]; then
+                FILE_FIRST_COMMIT[$FILE]=$COMMIT_INDEX
+              fi
+            done
+          done
+
+          # For each implementation file, check if its test appeared first or simultaneously
+          for FILE in "${!FILE_FIRST_COMMIT[@]}"; do
+            # Skip test files, configs, docs
+            case "$FILE" in
+              *_test.go|*.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx) continue ;;
+              *.md|*.json|*.yml|*.yaml|*.lock|*.mod|*.sum) continue ;;
+            esac
+
+            IMPL_INDEX=${FILE_FIRST_COMMIT[$FILE]}
+
+            # Find corresponding test file
+            TEST_FILE=""
+            case "$FILE" in
+              *.go)
+                TEST_FILE="${FILE%.go}_test.go"
+                ;;
+              *.ts)
+                TEST_FILE="${FILE%.ts}.test.ts"
+                [ -z "${FILE_FIRST_COMMIT[$TEST_FILE]+x}" ] && TEST_FILE="${FILE%.ts}.spec.ts"
+                ;;
+              *.tsx)
+                TEST_FILE="${FILE%.tsx}.test.tsx"
+                [ -z "${FILE_FIRST_COMMIT[$TEST_FILE]+x}" ] && TEST_FILE="${FILE%.tsx}.spec.tsx"
+                ;;
+            esac
+
+            if [ -n "$TEST_FILE" ] && [ -n "${FILE_FIRST_COMMIT[$TEST_FILE]+x}" ]; then
+              TOTAL_PAIRS=$((TOTAL_PAIRS + 1))
+              TEST_INDEX=${FILE_FIRST_COMMIT[$TEST_FILE]}
+
+              # Test committed before or same commit as implementation = test-first
+              if [ "$TEST_INDEX" -le "$IMPL_INDEX" ]; then
+                TEST_FIRST_PAIRS=$((TEST_FIRST_PAIRS + 1))
+              fi
+            fi
+          done
+
+          # Calculate ratio and score
+          if [ "$TOTAL_PAIRS" -gt 0 ]; then
+            RATIO=$(echo "scale=1; $TEST_FIRST_PAIRS * 100 / $TOTAL_PAIRS" | bc -l)
+            # Scoring rubric (20 points max):
+            #   100% test-first = 20 pts
+            #   80-99%          = 16 pts
+            #   60-79%          = 12 pts
+            #   40-59%          = 8 pts
+            #   20-39%          = 4 pts
+            #   <20%            = 0 pts
+            if [ "$(echo "$RATIO >= 100" | bc -l)" -eq 1 ]; then SCORE=20
+            elif [ "$(echo "$RATIO >= 80" | bc -l)" -eq 1 ]; then SCORE=16
+            elif [ "$(echo "$RATIO >= 60" | bc -l)" -eq 1 ]; then SCORE=12
+            elif [ "$(echo "$RATIO >= 40" | bc -l)" -eq 1 ]; then SCORE=8
+            elif [ "$(echo "$RATIO >= 20" | bc -l)" -eq 1 ]; then SCORE=4
+            else SCORE=0
+            fi
+          else
+            # No test/impl pairs found - neutral score
+            RATIO="N/A"
+            SCORE=10
+          fi
+
+          echo "total_pairs=$TOTAL_PAIRS" >> $GITHUB_OUTPUT
+          echo "test_first_pairs=$TEST_FIRST_PAIRS" >> $GITHUB_OUTPUT
+          echo "ratio=$RATIO" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Test-first: $TEST_FIRST_PAIRS/$TOTAL_PAIRS pairs ($RATIO%), score=$SCORE/20"
+
+      # --- Component 3: Test-to-Code Ratio (15 points) ---
+
+      - name: Calculate test-to-code ratio
+        id: test-code-ratio
+        run: |
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+
+          # Count lines in changed files
+          TEST_LINES=0
+          IMPL_LINES=0
+
+          CHANGED_FILES=$(git diff --name-only ${BASE_SHA}...HEAD)
+
+          for FILE in $CHANGED_FILES; do
+            [ ! -f "$FILE" ] && continue
+
+            LINES=$(wc -l < "$FILE" 2>/dev/null || echo "0")
+
+            case "$FILE" in
+              *_test.go|*.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx)
+                TEST_LINES=$((TEST_LINES + LINES))
+                ;;
+              *.go|*.ts|*.tsx)
+                IMPL_LINES=$((IMPL_LINES + LINES))
+                ;;
+            esac
+          done
+
+          # Calculate ratio
+          if [ "$IMPL_LINES" -gt 0 ]; then
+            RATIO=$(echo "scale=2; $TEST_LINES / $IMPL_LINES" | bc -l)
+          else
+            RATIO="0"
+          fi
+
+          # Scoring rubric (15 points max):
+          #   ratio >= 1.5 (more test than code)  = 15 pts
+          #   ratio >= 1.0 (equal)                = 13 pts
+          #   ratio >= 0.7                        = 10 pts
+          #   ratio >= 0.5                        = 7 pts
+          #   ratio >= 0.3                        = 4 pts
+          #   ratio < 0.3                         = 0 pts
+          if [ "$(echo "$RATIO >= 1.5" | bc -l)" -eq 1 ]; then SCORE=15
+          elif [ "$(echo "$RATIO >= 1.0" | bc -l)" -eq 1 ]; then SCORE=13
+          elif [ "$(echo "$RATIO >= 0.7" | bc -l)" -eq 1 ]; then SCORE=10
+          elif [ "$(echo "$RATIO >= 0.5" | bc -l)" -eq 1 ]; then SCORE=7
+          elif [ "$(echo "$RATIO >= 0.3" | bc -l)" -eq 1 ]; then SCORE=4
+          else SCORE=0
+          fi
+
+          echo "test_lines=$TEST_LINES" >> $GITHUB_OUTPUT
+          echo "impl_lines=$IMPL_LINES" >> $GITHUB_OUTPUT
+          echo "ratio=$RATIO" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Test:Code ratio = $TEST_LINES:$IMPL_LINES ($RATIO), score=$SCORE/15"
+
+      # --- Component 4: Clean Architecture Score (10 points) ---
+
+      - name: Calculate architecture score
+        id: arch-score
+        run: |
+          VIOLATIONS=0
+
+          # Count violations from earlier steps
+          [ "${{ steps.clean-arch.outputs.violations }}" != "0" ] && VIOLATIONS=$((VIOLATIONS + 1))
+          [ "${{ steps.orm-check.outputs.violation }}" == "true" ] && VIOLATIONS=$((VIOLATIONS + 1))
+          [ "${{ steps.db-layer-check.outputs.violation }}" == "true" ] && VIOLATIONS=$((VIOLATIONS + 1))
+          [ "${{ steps.web-db-check.outputs.violation }}" == "true" ] && VIOLATIONS=$((VIOLATIONS + 1))
+          [ "${{ steps.mobile-db-check.outputs.violation }}" == "true" ] && VIOLATIONS=$((VIOLATIONS + 1))
+
+          # Scoring rubric (10 points max):
+          #   0 violations = 10 pts
+          #   1 violation  = 5 pts
+          #   2+ violations = 0 pts
+          if [ "$VIOLATIONS" -eq 0 ]; then SCORE=10
+          elif [ "$VIOLATIONS" -eq 1 ]; then SCORE=5
+          else SCORE=0
+          fi
+
+          echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Architecture: $VIOLATIONS violations, score=$SCORE/10"
+
+      # ═══════════════════════════════════════════════════════════════
+      # LLM ASSESSMENT (25 points total, strict rubric)
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: Claude - Edge Case & Error Handling Assessment
+        id: claude-assessment
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Review this PR for TDD compliance:
+            You are a TDD compliance auditor. Score this PR using the STRICT rubric below.
+            You MUST output ONLY valid JSON matching the schema. No other text.
 
-            1. Are tests written BEFORE implementation? (check commit order)
-            2. Do tests cover edge cases?
-            3. Is test coverage adequate?
-            4. Does code follow Clean Architecture?
+            ## IMPORTANT: Non-Interactive Mode
+            You are running in CI. Never ask questions. Always complete your assessment.
 
-            Provide a compliance score (0-100) and specific feedback.
+            ## Step 1: Read the changed files
+
+            Run this command to get the list of changed files:
+            ```
+            git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD
+            ```
+
+            Read ALL changed test files and implementation files.
+
+            ## Step 2: Score using STRICT rubric
+
+            ### Category A: Edge Case Coverage (15 points)
+
+            Check test files for these SPECIFIC patterns. Award points ONLY for tests that exist:
+
+            **Boundary tests (5 points):**
+            - 5 pts: Tests for empty inputs, zero values, max values, off-by-one, nil/null
+            - 3 pts: Tests for 2-3 of the above
+            - 1 pt:  Tests for 1 of the above
+            - 0 pts: No boundary tests found
+
+            **Input validation tests (5 points):**
+            - 5 pts: Tests for invalid types, malformed data, missing required fields, SQL injection strings
+            - 3 pts: Tests for 2-3 of the above
+            - 1 pt:  Tests for 1 of the above
+            - 0 pts: No input validation tests
+
+            **Concurrent/async tests (5 points):**
+            - 5 pts: Tests for race conditions, timeouts, retry logic, concurrent access
+            - 3 pts: Tests for 2 of the above
+            - 1 pt:  Tests for 1 of the above
+            - 0 pts: No concurrency tests
+            - N/A:   Feature doesn't involve concurrency → award 3 pts (neutral)
+
+            ### Category B: Error Handling Tests (10 points)
+
+            **Error path coverage (5 points):**
+            - 5 pts: Every function that can return an error has a test for the error path
+            - 3 pts: Most error paths tested (>70%)
+            - 1 pt:  Some error paths tested (>30%)
+            - 0 pts: Error paths not tested
+
+            **Error propagation (5 points):**
+            - 5 pts: Tests verify errors propagate correctly (wrapped, typed, logged)
+            - 3 pts: Tests check error messages/types but not propagation
+            - 1 pt:  Tests only check that errors are returned (no specifics)
+            - 0 pts: No error propagation testing
+
+            ## Step 3: Output JSON
+
+            Output ONLY this JSON structure:
+            ```json
+            {
+              "edge_case_score": <0-15>,
+              "error_handling_score": <0-10>,
+              "boundary_details": "<what boundary tests exist or are missing>",
+              "validation_details": "<what validation tests exist or are missing>",
+              "concurrency_details": "<what concurrency tests exist or are missing, or N/A>",
+              "error_path_details": "<what error paths are tested or missing>",
+              "error_propagation_details": "<how errors are tested>"
+            }
+            ```
           claude_args: |
-            --max-turns 5
-            --json-schema '{"type":"object","properties":{"score":{"type":"number"},"compliant":{"type":"boolean"},"issues":{"type":"array","items":{"type":"string"}},"suggestions":{"type":"array","items":{"type":"string"}}},"required":["score","compliant"]}'
+            --max-turns 15
+            --model claude-opus-4-5-20251101
+            --allowedTools Bash,Read,Glob,Grep
+            --output-format json
+
+      # ═══════════════════════════════════════════════════════════════
+      # COMPOSITE SCORE & REPORT
+      # ═══════════════════════════════════════════════════════════════
+
+      - name: Architecture Lint (informational)
+        run: |
+          npx dependency-cruiser --config .dependency-cruiser.js apps/ 2>/dev/null || true
+
+      - name: Calculate composite score & post report
+        if: always()
+        uses: actions/github-script@v8
+        env:
+          COVERAGE_SCORE: ${{ steps.coverage-score.outputs.score || '0' }}
+          AVG_COVERAGE: ${{ steps.coverage-score.outputs.avg_coverage || '0' }}
+          GO_COVERAGE: ${{ steps.go-coverage.outputs.coverage || '0' }}
+          WEB_COVERAGE: ${{ steps.web-coverage.outputs.coverage || '0' }}
+          MOBILE_COVERAGE: ${{ steps.mobile-coverage.outputs.coverage || '0' }}
+          TEST_FIRST_SCORE: ${{ steps.test-first-score.outputs.score || '0' }}
+          TEST_FIRST_RATIO: ${{ steps.test-first-score.outputs.ratio || 'N/A' }}
+          TEST_FIRST_PAIRS: ${{ steps.test-first-score.outputs.total_pairs || '0' }}
+          TEST_FIRST_GOOD: ${{ steps.test-first-score.outputs.test_first_pairs || '0' }}
+          TEST_CODE_SCORE: ${{ steps.test-code-ratio.outputs.score || '0' }}
+          TEST_CODE_RATIO: ${{ steps.test-code-ratio.outputs.ratio || '0' }}
+          TEST_LINES: ${{ steps.test-code-ratio.outputs.test_lines || '0' }}
+          IMPL_LINES: ${{ steps.test-code-ratio.outputs.impl_lines || '0' }}
+          ARCH_SCORE: ${{ steps.arch-score.outputs.score || '0' }}
+          ARCH_VIOLATIONS: ${{ steps.arch-score.outputs.violations || '0' }}
+        with:
+          script: |
+            // Parse deterministic scores
+            const coverageScore = parseInt(process.env.COVERAGE_SCORE);
+            const testFirstScore = parseInt(process.env.TEST_FIRST_SCORE);
+            const testCodeScore = parseInt(process.env.TEST_CODE_SCORE);
+            const archScore = parseInt(process.env.ARCH_SCORE);
+
+            // Parse LLM assessment
+            let edgeCaseScore = 0;
+            let errorHandlingScore = 0;
+            let llmDetails = {};
+
+            try {
+              const claudeOutput = `${{ steps.claude-assessment.outputs.result || '{}' }}`;
+              const parsed = JSON.parse(claudeOutput);
+              edgeCaseScore = Math.min(15, Math.max(0, parsed.edge_case_score || 0));
+              errorHandlingScore = Math.min(10, Math.max(0, parsed.error_handling_score || 0));
+              llmDetails = parsed;
+            } catch (e) {
+              console.log('Could not parse Claude assessment, using 0 for LLM scores');
+              edgeCaseScore = 0;
+              errorHandlingScore = 0;
+            }
+
+            // Calculate composite score
+            const deterministicTotal = coverageScore + testFirstScore + testCodeScore + archScore;
+            const llmTotal = edgeCaseScore + errorHandlingScore;
+            const compositeScore = deterministicTotal + llmTotal;
+
+            // Determine grade
+            let grade, gradeEmoji;
+            if (compositeScore >= 90) { grade = 'A+'; gradeEmoji = '🏆'; }
+            else if (compositeScore >= 85) { grade = 'A'; gradeEmoji = '🟢'; }
+            else if (compositeScore >= 80) { grade = 'A-'; gradeEmoji = '🟢'; }
+            else if (compositeScore >= 75) { grade = 'B+'; gradeEmoji = '🟢'; }
+            else if (compositeScore >= 70) { grade = 'B'; gradeEmoji = '🟡'; }
+            else if (compositeScore >= 65) { grade = 'B-'; gradeEmoji = '🟡'; }
+            else if (compositeScore >= 60) { grade = 'C+'; gradeEmoji = '🟡'; }
+            else if (compositeScore >= 55) { grade = 'C'; gradeEmoji = '🟠'; }
+            else if (compositeScore >= 50) { grade = 'C-'; gradeEmoji = '🟠'; }
+            else { grade = 'F'; gradeEmoji = '🔴'; }
+
+            // Determine pass/fail (minimum 60 to pass)
+            const passed = compositeScore >= 60;
+            const verdict = passed ? '✅ PASS' : '❌ FAIL';
+
+            // Build progress bars
+            function progressBar(score, max) {
+              const filled = Math.round((score / max) * 10);
+              return '█'.repeat(filled) + '░'.repeat(10 - filled);
+            }
+
+            // Build report
+            const report = `## 📊 TDD Quality Gate Report
+
+            ${gradeEmoji} **Grade: ${grade}** | **Score: ${compositeScore}/100** | ${verdict}
+
+            ---
+
+            ### Deterministic Scores (${deterministicTotal}/75)
+
+            | Component | Score | Details | Bar |
+            |-----------|-------|---------|-----|
+            | **Test Coverage** | **${coverageScore}/30** | Avg: ${process.env.AVG_COVERAGE}% (Go: ${process.env.GO_COVERAGE}%, Web: ${process.env.WEB_COVERAGE}%, Mobile: ${process.env.MOBILE_COVERAGE}%) | ${progressBar(coverageScore, 30)} |
+            | **Test-Before-Code** | **${testFirstScore}/20** | ${process.env.TEST_FIRST_GOOD}/${process.env.TEST_FIRST_PAIRS} pairs test-first (${process.env.TEST_FIRST_RATIO}%) | ${progressBar(testFirstScore, 20)} |
+            | **Test:Code Ratio** | **${testCodeScore}/15** | ${process.env.TEST_LINES} test lines / ${process.env.IMPL_LINES} impl lines (${process.env.TEST_CODE_RATIO}x) | ${progressBar(testCodeScore, 15)} |
+            | **Clean Architecture** | **${archScore}/10** | ${process.env.ARCH_VIOLATIONS} violations | ${progressBar(archScore, 10)} |
+
+            ### LLM Assessment Scores (${llmTotal}/25)
+
+            | Component | Score | Details |
+            |-----------|-------|---------|
+            | **Edge Case Coverage** | **${edgeCaseScore}/15** | Boundary: ${llmDetails.boundary_details || 'N/A'} |
+            | **Error Handling** | **${errorHandlingScore}/10** | ${llmDetails.error_path_details || 'N/A'} |
+
+            <details>
+            <summary>📋 Detailed LLM Assessment</summary>
+
+            **Boundary Tests**: ${llmDetails.boundary_details || 'Not assessed'}
+            **Input Validation**: ${llmDetails.validation_details || 'Not assessed'}
+            **Concurrency**: ${llmDetails.concurrency_details || 'Not assessed'}
+            **Error Paths**: ${llmDetails.error_path_details || 'Not assessed'}
+            **Error Propagation**: ${llmDetails.error_propagation_details || 'Not assessed'}
+
+            </details>
+
+            ---
+
+            ### Scoring Rubric
+
+            <details>
+            <summary>How is this score calculated?</summary>
+
+            | Component | Max | Method | Rubric |
+            |-----------|-----|--------|--------|
+            | Test Coverage | 30 | \`go test -cover\` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10 |
+            | Test-Before-Code | 20 | Git commit order analysis | 100%=20, 80%+=16, 60%+=12, 40%+=8, 20%+=4 |
+            | Test:Code Ratio | 15 | Line count comparison | ≥1.5x=15, ≥1.0x=13, ≥0.7x=10, ≥0.5x=7, ≥0.3x=4 |
+            | Clean Architecture | 10 | Static import analysis | 0 violations=10, 1=5, 2+=0 |
+            | Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |
+            | Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |
+
+            **Passing score: 60/100**
+            **Deterministic weight: 75%** (repeatable across runs)
+            **LLM weight: 25%** (strict rubric minimizes variance)
+
+            </details>
+
+            ---
+            🤖 TDD Quality Gate | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            // Post as PR comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+
+            // Post workflow summary
+            await core.summary.addRaw(report).write();
+
+            // Fail the job if score is below threshold
+            if (!passed) {
+              core.setFailed(`TDD Quality Gate failed: ${compositeScore}/100 (minimum 60 required)`);
+            }

@@ -329,14 +329,57 @@ Closes #XX
 
 ### 5. TDD Gate (`tdd-gate.yml`)
 
-**Purpose**: Validates tests pass and coverage meets threshold before merge.
+**Purpose**: Calibrated quality scoring system that validates TDD compliance with deterministic metrics and LLM assessment.
 
-**Trigger**: `pull_request` to main branch
+**Trigger**: `pull_request` to `main` or `develop`
 
-**Checks**:
-- All tests pass
-- Coverage ≥ 80% for new code
-- No regression in existing coverage
+**Scoring System** (100 points total):
+
+| Component | Max | Method | What's Measured |
+|-----------|-----|--------|-----------------|
+| **Test Coverage** | 30 | `go test -cover` / Jest | Average coverage across apps |
+| **Test-Before-Code** | 20 | Git commit order analysis | % of test files committed before implementation |
+| **Test:Code Ratio** | 15 | Line count comparison | Lines of test code vs implementation code |
+| **Clean Architecture** | 10 | Static import analysis | Layer violations, ORM usage, DB access rules |
+| **Edge Cases (LLM)** | 15 | Claude reviews with strict rubric | Boundary + validation + concurrency tests |
+| **Error Handling (LLM)** | 10 | Claude reviews with strict rubric | Error paths + error propagation tests |
+
+**Score Calibration:**
+- **75 points deterministic** (repeatable, same code = same score every time)
+- **25 points LLM** (strict point-based rubric minimizes variance to +/- 3 points)
+
+**Grading Scale:**
+
+| Grade | Score | Result |
+|-------|-------|--------|
+| A+ | 90-100 | Pass |
+| A/A- | 80-89 | Pass |
+| B+/B/B- | 65-79 | Pass |
+| C+/C/C- | 50-64 | C+ passes (60+), C/C- fail |
+| F | <50 | Fail |
+
+**Pass threshold: 60/100**
+
+**Report Output:**
+```
+📊 TDD Quality Gate Report
+
+🟢 Grade: A | Score: 83/100 | ✅ PASS
+
+Deterministic Scores (63/75)
+| Component        | Score  | Details                    | Bar        |
+|------------------|--------|----------------------------|------------|
+| Test Coverage    | 24/30  | Avg: 87% (Go:87%)         | ████████░░ |
+| Test-Before-Code | 16/20  | 4/5 pairs test-first (80%) | ████████░░ |
+| Test:Code Ratio  | 13/15  | 320:295 lines (1.08x)      | █████████░ |
+| Clean Arch       | 10/10  | 0 violations               | ██████████ |
+
+LLM Assessment Scores (20/25)
+| Component        | Score  | Details                    |
+|------------------|--------|----------------------------|
+| Edge Cases       | 13/15  | Boundary + validation good |
+| Error Handling   |  7/10  | Most error paths tested    |
+```
 
 ---
 

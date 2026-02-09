@@ -237,84 +237,15 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 DROP TABLE IF EXISTS users;
 ```
 
-## CI/CD Automation (MANDATORY)
+## CI/CD Awareness
 
-This project uses AI-powered GitHub Actions for automated development.
+This project uses AI-powered GitHub Actions. Full documentation: `docs/github-actions-workflow.md`
 
-### Workflow Pipeline
-
-```
-PRD → Architect → Issues → Builder → PRs → Reviewer → TDD Gate → Deploy
-                                                          ↓
-                                              Architect Monitor
-                                              (batch completion)
-```
-
-### Workflows
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `claude-architect.yml` | `workflow_dispatch`, `@claude-architect` | Analyzes PRDs, creates issues in batches |
-| `claude-architect-monitor.yml` | `issues: [closed]` | Detects batch completion, notifies for next batch |
-| `claude-implement.yml` | `issues: [labeled]` with `claude-implement` | Implements features via TDD, creates PRs |
-| `claude-review.yml` | `pull_request`, `@claude-review` | Reviews PRs, auto-approves if quality passes |
-| `claude-fix.yml` | `issues: [labeled]` with `claude-fix` | Fixes bugs, creates PRs |
-| `claude-assistant.yml` | `@claude` comment | General help on issues/PRs |
-| `tdd-gate.yml` | `pull_request` to main/develop | Calibrated TDD quality scoring (100-point system) |
-| `deploy-backend.yml` | Push to main | Deploy Go API to Fly.io |
-| `deploy-web.yml` | Push to main | Deploy Next.js to Vercel |
-| `deploy-mobile.yml` | Manual/tag release | Build via EAS |
-| `migrate-db.yml` | Push to main (migrations/) | Run SQL migrations on Supabase |
-
-### Non-Interactive CI Mode (CRITICAL)
-
-All Claude workflows run in CI with **NO human interaction**. When running in GitHub Actions:
-
-- **NEVER stop to ask for clarification** - Make reasonable assumptions
-- **ALWAYS document assumptions** in PR descriptions or issue comments
-- **If requirements are ambiguous** - Choose the most common/standard approach
-- **If you encounter a blocker** - Document it and implement as much as possible
-
-### @ Commands
-
-| Command | Where to Use | What It Does |
-|---------|-------------|--------------|
-| `@claude-architect next` | Master Plan issue comment | Creates the next batch of issues |
-| `@claude-architect status` | Master Plan issue comment | Reports current progress |
-| `@claude-review` | PR comment | Requests a re-review |
-| `@claude` | Any issue/PR comment | General assistant help |
-
-### Issue Labels
-
-| Label | Applied By | Meaning |
-|-------|------------|---------|
-| `claude-implement` | Architect | Issue ready for Builder |
-| `claude-fix` | Human | Bug for auto-fix |
-| `architect-master-plan` | Architect | Master Plan tracking issue |
-| `amendment` | Architect | PRD amendment issue |
-| `batch/N` | Architect | Batch grouping |
-| `size/XS,S,M,L` | Architect | Scope estimate |
-| `priority/high,medium,low` | Architect | Priority level |
-| `implementation-complete` | Builder | Implementation done |
-| `review/approved` | Reviewer | PR approved |
-| `review/changes-requested` | Reviewer | PR needs fixes |
-
-### TDD Quality Gate Scoring
-
-PRs are scored on a calibrated 100-point system:
-
-| Component | Max | Method |
-|-----------|-----|--------|
-| Test Coverage | 30 | `go test -cover` / Jest |
-| Test-Before-Code | 20 | Git commit order analysis |
-| Test:Code Ratio | 15 | Line count comparison |
-| Clean Architecture | 10 | Static import analysis |
-| Edge Cases (LLM) | 15 | Claude with strict rubric |
-| Error Handling (LLM) | 10 | Claude with strict rubric |
-
-- **75 points deterministic** (repeatable across runs)
-- **25 points LLM** (strict rubric, +/- 3 pts variance)
-- **Pass threshold: 60/100**
+Key rules for Claude Code:
+- Every **PR must include a Mermaid sequence diagram** (see Sequence Diagram Requirements below)
+- Every **issue must include a Mermaid sequence diagram** showing component interactions
+- The **TDD Quality Gate** scores PRs on a 100-point scale (pass threshold: 60)
+- PRs are **auto-reviewed** by `claude-review.yml` — code must pass architecture, testing, and security checks
 
 ## Sequence Diagram Requirements (MANDATORY)
 
@@ -382,21 +313,9 @@ xenios/
 │   ├── shared-types/      # Common TypeScript types
 │   ├── api-client/        # HTTP client for Backend API
 │   └── ui-kit/            # Shared UI components
-├── docs/
-│   └── github-actions-workflow.md  # Full CI/CD documentation
+├── docs/                  # Project documentation
 └── .github/
-    └── workflows/
-        ├── claude-architect.yml          # PRD to issues
-        ├── claude-architect-monitor.yml  # Batch completion
-        ├── claude-implement.yml          # Feature implementation
-        ├── claude-review.yml             # PR review & auto-approve
-        ├── claude-fix.yml                # Bug fixes
-        ├── claude-assistant.yml          # General assistant
-        ├── tdd-gate.yml                  # TDD quality scoring
-        ├── deploy-backend.yml            # Fly.io deployment
-        ├── deploy-web.yml                # Vercel deployment
-        ├── deploy-mobile.yml             # EAS Build
-        └── migrate-db.yml               # Database migrations
+    └── workflows/         # CI/CD automation (see docs/github-actions-workflow.md)
 ```
 
 ## Git Workflow

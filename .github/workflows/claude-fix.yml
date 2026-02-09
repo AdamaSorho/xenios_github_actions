@@ -31,8 +31,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure git identity
+        run: |
+          git config --global user.name "Claude"
+          git config --global user.email "claude[bot]@users.noreply.github.com"
+
       - name: Claude Fixes Bug
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # Using Claude Max subscription via OAuth token (flat $200/month)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

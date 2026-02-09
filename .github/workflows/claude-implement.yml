@@ -142,7 +142,7 @@ jobs:
           claude_args: |
             --max-turns 50
             --model claude-opus-4-5-20251101
-            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
 
       - name: Add implementation label
         if: success()

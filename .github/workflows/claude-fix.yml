@@ -70,10 +70,18 @@ jobs:
             - Add tests to prevent regression
             - Keep changes focused and minimal
             - Document why the bug occurred
+
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in a CI environment with NO human interaction.
+            - NEVER stop to ask for clarification - make reasonable assumptions
+            - ALWAYS document assumptions in the PR description
+            - If you cannot reproduce the bug, document what you tried and
+              implement a best-effort fix based on the bug report
           claude_args: |
             --max-turns 30
             --model claude-opus-4-5-20251101
-            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
 
       - name: Add fix label
         if: success()

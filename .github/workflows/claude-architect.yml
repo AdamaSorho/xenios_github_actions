@@ -445,7 +445,7 @@ jobs:
           claude_args: |
             --max-turns 100
             --model claude-opus-4-5-20251101
-            --allowedTools Bash,Read,Write,Glob,Grep
+            --allowedTools Bash,Read,Write,Glob,Grep,WebSearch,WebFetch
 
       - name: Post Summary Comment
         if: github.event_name == 'issue_comment'

@@ -89,7 +89,7 @@ jobs:
               implement a best-effort fix based on the bug report
           claude_args: |
             --max-turns 30
-            --model claude-sonnet-4-5-20250929
+            --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
 
       - name: Add fix label

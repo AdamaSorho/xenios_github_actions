@@ -480,7 +480,7 @@ jobs:
             ```
           claude_args: |
             --max-turns 15
-            --model claude-sonnet-4-5-20250929
+            --model claude-opus-4-6
             --allowedTools Bash,Read,Glob,Grep
             --json-schema '{"type":"object","properties":{"edge_case_score":{"type":"number"},"error_handling_score":{"type":"number"},"boundary_details":{"type":"string"},"validation_details":{"type":"string"},"concurrency_details":{"type":"string"},"error_path_details":{"type":"string"},"error_propagation_details":{"type":"string"}},"required":["edge_case_score","error_handling_score","boundary_details","validation_details","concurrency_details","error_path_details","error_propagation_details"]}'
 

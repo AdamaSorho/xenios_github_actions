@@ -132,5 +132,5 @@ jobs:
             TDD required: write tests first, 80% coverage minimum.
           claude_args: |
             --max-turns 50
-            --model claude-sonnet-4-5-20250929
+            --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch

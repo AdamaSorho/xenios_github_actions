@@ -3,7 +3,9 @@ package domain
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 )
 
 // TestHealthCheck_Creation tests creating a HealthCheck struct
@@ -150,9 +152,14 @@ func TestHealthChecker_Interface(t *testing.T) {
 }
 
 // mockHealthChecker is a mock implementation for testing
-type mockHealthChecker struct{}
+type mockHealthChecker struct {
+	shouldError bool
+}
 
 func (m *mockHealthChecker) Check(ctx context.Context) (*Health, error) {
+	if m.shouldError {
+		return nil, context.DeadlineExceeded
+	}
 	return &Health{
 		Status: HealthStatusHealthy,
 		Checks: map[string]HealthCheck{
@@ -247,5 +254,124 @@ func TestHealth_MultipleChecks(t *testing.T) {
 				t.Errorf("Expected %d checks, got %d", tt.expectedCount, len(tt.health.Checks))
 			}
 		})
+	}
+}
+
+// TestHealthChecker_CheckError tests that HealthChecker.Check() can return errors
+func TestHealthChecker_CheckError(t *testing.T) {
+	checker := &mockHealthChecker{shouldError: true}
+	ctx := context.Background()
+
+	health, err := checker.Check(ctx)
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+	if health != nil {
+		t.Errorf("Expected nil Health when error occurs, got %v", health)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Expected context.DeadlineExceeded error, got %v", err)
+	}
+}
+
+// TestHealthChecker_ContextCancellation tests context timeout handling
+func TestHealthChecker_ContextCancellation(t *testing.T) {
+	checker := &mockHealthChecker{}
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+
+	// Wait for context to expire
+	time.Sleep(5 * time.Millisecond)
+
+	// Verify context is expired
+	if ctx.Err() == nil {
+		t.Fatal("Expected context to be expired")
+	}
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		t.Errorf("Expected context.DeadlineExceeded, got %v", ctx.Err())
+	}
+
+	// The mock doesn't actually respect context, but we verify the pattern works
+	// In real implementations, Check() should respect ctx.Done()
+	_, err := checker.Check(ctx)
+	// Mock returns nil error, but in production code should check ctx.Err()
+	if err != nil {
+		t.Logf("Mock returned error (this is OK): %v", err)
+	}
+}
+
+// TestHealthCheck_NegativeLatency tests HealthCheck with negative latency values
+func TestHealthCheck_NegativeLatency(t *testing.T) {
+	check := HealthCheck{
+		Status:    StatusDown,
+		LatencyMs: -1,
+	}
+
+	if check.LatencyMs >= 0 {
+		t.Errorf("Expected negative LatencyMs, got %d", check.LatencyMs)
+	}
+
+	// Verify negative latency can be JSON marshaled/unmarshaled
+	jsonBytes, err := json.Marshal(check)
+	if err != nil {
+		t.Fatalf("Failed to marshal HealthCheck with negative latency: %v", err)
+	}
+
+	var unmarshaled HealthCheck
+	err = json.Unmarshal(jsonBytes, &unmarshaled)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal HealthCheck with negative latency: %v", err)
+	}
+
+	if unmarshaled.LatencyMs != -1 {
+		t.Errorf("Expected LatencyMs -1, got %d", unmarshaled.LatencyMs)
+	}
+}
+
+// TestHealth_EmptyStrings tests Health entity with empty string values
+func TestHealth_EmptyStrings(t *testing.T) {
+	health := Health{
+		Status: "",
+		Checks: map[string]HealthCheck{
+			"database": {
+				Status:    "",
+				LatencyMs: 10,
+			},
+		},
+		Uptime: "",
+	}
+
+	if health.Status != "" {
+		t.Errorf("Expected empty Status, got %s", health.Status)
+	}
+	if health.Uptime != "" {
+		t.Errorf("Expected empty Uptime, got %s", health.Uptime)
+	}
+
+	dbCheck, exists := health.Checks["database"]
+	if !exists {
+		t.Fatal("Expected database check to exist")
+	}
+	if dbCheck.Status != "" {
+		t.Errorf("Expected empty check Status, got %s", dbCheck.Status)
+	}
+
+	// Verify empty strings serialize correctly
+	jsonBytes, err := json.Marshal(health)
+	if err != nil {
+		t.Fatalf("Failed to marshal Health with empty strings: %v", err)
+	}
+
+	var unmarshaled Health
+	err = json.Unmarshal(jsonBytes, &unmarshaled)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal Health with empty strings: %v", err)
+	}
+
+	if unmarshaled.Status != "" {
+		t.Errorf("Expected empty Status after unmarshal, got %s", unmarshaled.Status)
+	}
+	if unmarshaled.Uptime != "" {
+		t.Errorf("Expected empty Uptime after unmarshal, got %s", unmarshaled.Uptime)
 	}
 }

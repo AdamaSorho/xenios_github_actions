@@ -239,3 +239,113 @@ func TestSetupServer_HandlerNotNil(t *testing.T) {
 		t.Error("expected non-nil Handler")
 	}
 }
+
+func TestSetupServer_TimeoutValues(t *testing.T) {
+	// Act
+	server := setupServer()
+
+	// Assert - verify specific timeout values
+	if server.ReadTimeout != 15*time.Second {
+		t.Errorf("expected ReadTimeout 15s, got %v", server.ReadTimeout)
+	}
+
+	if server.WriteTimeout != 15*time.Second {
+		t.Errorf("expected WriteTimeout 15s, got %v", server.WriteTimeout)
+	}
+
+	if server.IdleTimeout != 60*time.Second {
+		t.Errorf("expected IdleTimeout 60s, got %v", server.IdleTimeout)
+	}
+}
+
+func TestGetPort_VariousPortNumbers(t *testing.T) {
+	testCases := []struct {
+		name     string
+		portEnv  string
+		expected string
+	}{
+		{"Port 80", "80", "80"},
+		{"Port 443", "443", "443"},
+		{"Port 3000", "3000", "3000"},
+		{"Port 8000", "8000", "8000"},
+		{"Port 65535", "65535", "65535"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			originalPort := os.Getenv("PORT")
+			os.Setenv("PORT", tc.portEnv)
+			defer func() {
+				if originalPort != "" {
+					os.Setenv("PORT", originalPort)
+				} else {
+					os.Unsetenv("PORT")
+				}
+			}()
+
+			// Act
+			port := getPort()
+
+			// Assert
+			if port != tc.expected {
+				t.Errorf("expected port %s, got %s", tc.expected, port)
+			}
+		})
+	}
+}
+
+func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
+	// Arrange
+	originalPort := os.Getenv("PORT")
+	port := "18083"
+	os.Setenv("PORT", port)
+	defer func() {
+		if originalPort != "" {
+			os.Setenv("PORT", originalPort)
+		} else {
+			os.Unsetenv("PORT")
+		}
+	}()
+
+	// Act
+	server := setupServer()
+
+	// Start server
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Expected to close during test
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Test both endpoints
+	healthResp, err := http.Get("http://localhost:" + port + "/health")
+	if err != nil {
+		t.Fatalf("failed to call health endpoint: %v", err)
+	}
+	defer healthResp.Body.Close()
+
+	versionResp, err := http.Get("http://localhost:" + port + "/version")
+	if err != nil {
+		t.Fatalf("failed to call version endpoint: %v", err)
+	}
+	defer versionResp.Body.Close()
+
+	// Assert both return 200
+	if healthResp.StatusCode != http.StatusOK {
+		t.Errorf("expected health status 200, got %d", healthResp.StatusCode)
+	}
+
+	if versionResp.StatusCode != http.StatusOK {
+		t.Errorf("expected version status 200, got %d", versionResp.StatusCode)
+	}
+
+	// Clean up
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		t.Errorf("failed to shutdown server: %v", err)
+	}
+}

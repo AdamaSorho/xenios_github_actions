@@ -479,3 +479,82 @@ func TestVersionHandler_Version_ConcurrentRequests(t *testing.T) {
 		<-done
 	}
 }
+
+// Error Handling Tests
+
+// failingResponseWriter is a test helper that simulates a failing HTTP response writer
+type failingResponseWriter struct {
+	http.ResponseWriter
+	headerWritten bool
+}
+
+func (f *failingResponseWriter) Header() http.Header {
+	if f.ResponseWriter == nil {
+		return http.Header{}
+	}
+	return f.ResponseWriter.Header()
+}
+
+func (f *failingResponseWriter) WriteHeader(statusCode int) {
+	f.headerWritten = true
+	if f.ResponseWriter != nil {
+		f.ResponseWriter.WriteHeader(statusCode)
+	}
+}
+
+func (f *failingResponseWriter) Write(b []byte) (int, error) {
+	// Simulate write error after headers are written
+	if f.headerWritten {
+		return 0, http.ErrContentLength
+	}
+	if f.ResponseWriter != nil {
+		return f.ResponseWriter.Write(b)
+	}
+	return 0, http.ErrContentLength
+}
+
+func TestVersionHandler_Version_JSONEncodeError(t *testing.T) {
+	// Note: This test documents that the current implementation handles JSON encoding errors
+	// by returning early after respondJSON fails. In a real scenario, json.Encoder.Encode()
+	// rarely fails for simple struct types, but this test covers the error path for completeness.
+
+	// Arrange
+	handler := NewVersionHandler()
+	req := httptest.NewRequest(http.MethodGet, "/version", nil)
+
+	// Use a failing response writer that simulates an error during JSON encoding
+	rec := httptest.NewRecorder()
+	failingWriter := &failingResponseWriter{ResponseWriter: rec}
+
+	// Act - this will trigger the error path in Version() when respondJSON fails
+	handler.Version(failingWriter, req)
+
+	// Assert - the handler should have attempted to write headers
+	// The error is handled gracefully by returning early
+	if !failingWriter.headerWritten {
+		t.Error("expected headers to be written before error")
+	}
+}
+
+func TestVersionHandler_Version_ResponseWriterBehavior(t *testing.T) {
+	// Arrange
+	handler := NewVersionHandler()
+	req := httptest.NewRequest(http.MethodGet, "/version", nil)
+	rec := httptest.NewRecorder()
+
+	// Act
+	handler.Version(rec, req)
+
+	// Assert - verify ResponseWriter behavior
+	if rec.Code == 0 {
+		t.Error("expected status code to be set")
+	}
+
+	if rec.Body.Len() == 0 {
+		t.Error("expected response body to be written")
+	}
+
+	if rec.Header().Get("Content-Type") == "" {
+		t.Error("expected Content-Type header to be set")
+	}
+}

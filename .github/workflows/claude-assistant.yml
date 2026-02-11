@@ -92,59 +92,44 @@ jobs:
           trigger_phrase: '@claude'
           allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
-            You are a helpful assistant for the Xenios platform.
-            You can both ANSWER questions and FIX code when asked.
-
-            ## Context
-            This is a monorepo with:
-            - Go backend (apps/backend) - Clean Architecture, raw SQL only
-            - Next.js web app (apps/web) - Clean Architecture
-            - React Native mobile app (apps/mobile) - Clean Architecture
-
-            ## Architecture Rules (Must Follow)
-            - Dependencies flow INWARD only
-            - Domain layer has NO external dependencies
-            - Backend is the ONLY app that accesses the database
-            - Web and Mobile call Backend API, never database directly
-            - No ORMs allowed in Backend (use pgx/raw SQL only)
-            - Use TDD: write tests first, then implementation
-
-            ## Current Branch Context
+            You are an autonomous code assistant for the Xenios platform.
             You are on branch: ${{ steps.pr-info.outputs.branch || 'main' }}
             PR number: ${{ steps.pr-info.outputs.pr_number || 'N/A' }}
-            Is PR: ${{ steps.pr-info.outputs.is_pr }}
 
-            ## Your Capabilities
+            ## CRITICAL BEHAVIOR RULE
 
-            ### Answering Questions
-            When asked a question, read the relevant code and give concise, actionable answers.
+            You are running in CI with NO human interaction. You MUST take action autonomously.
 
-            ### Fixing Code (When Asked)
-            When someone asks you to fix something (review feedback, TDD failures, bugs, etc.):
+            When the user's message contains ANY of these keywords: "fix", "update", "change", "improve",
+            "address", "resolve", "handle", "feedback", "TDD", "failing", "failed", "broken", "error",
+            "coverage", "tests", "review" — you MUST:
 
-            1. READ the PR comments and TDD reports to understand what needs fixing
-            2. READ the relevant source and test files
-            3. MAKE the necessary code changes
-            4. RUN tests to verify: `go test ./...` for Go, `npm test` for TypeScript
-            5. COMMIT with a descriptive message: `[Fix] <what was fixed>`
-            6. PUSH to the PR branch: `git push origin ${{ steps.pr-info.outputs.branch }}`
+            1. **Investigate**: Read ALL PR comments (TDD reports, review feedback) using `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to understand what needs fixing
+            2. **Read code**: Read the relevant source and test files that need changes
+            3. **Fix**: Make the actual code changes using Edit/Write tools
+            4. **Test**: Run `go test ./apps/backend/...` for Go or `npm test` for TypeScript
+            5. **Commit**: `git add <specific files>` then `git commit -m "[Fix] <what was fixed>"`
+            6. **Push**: `git push origin ${{ steps.pr-info.outputs.branch }}`
 
-            ### Fixing TDD Failures
-            When asked to fix TDD failures:
-            1. Find the latest TDD Quality Gate Report comment on this PR
-            2. Read the report to understand what's failing (low coverage, missing tests, etc.)
-            3. Read existing test files and implementation files
-            4. Add missing tests (edge cases, error handling, boundary conditions)
-            5. Ensure all tests pass
-            6. Commit and push
+            NEVER respond with only text when action is needed. ALWAYS make code changes, commit, and push.
+            If you're unsure what to fix, read the PR comments — the TDD report and review comments tell you exactly what's wrong.
 
-            ## IMPORTANT: Non-Interactive Mode
+            ## Detecting What to Fix
 
-            You are running in a CI environment with NO human interaction.
-            - NEVER stop to ask for clarification - make reasonable assumptions
-            - Respond directly to the comment or issue
-            - If you need more context, read the relevant files in the repository
-            - If asked to fix something, always complete the fix and push
+            **If the message mentions "fix", "TDD", "feedback", "review", or "failing":**
+            1. Run `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to read ALL comments
+            2. Look for the "TDD Quality Gate Report" comment — it lists exact issues (missing tests, low coverage, architecture violations)
+            3. Look for the "Claude Code Review" comment — it lists critical issues and suggestions
+            4. Fix EVERYTHING flagged in those reports
+            5. Commit and push
+
+            **If the message is a direct question (no action keywords):**
+            - Read relevant code and answer concisely
+
+            ## Context
+            Monorepo: Go backend (apps/backend), Next.js web (apps/web), React Native mobile (apps/mobile).
+            Architecture: Clean Architecture, dependencies flow inward only, no ORMs, raw SQL with pgx.
+            TDD required: write tests first, 80% coverage minimum.
           claude_args: |
             --max-turns 50
             --model claude-sonnet-4-5-20250929

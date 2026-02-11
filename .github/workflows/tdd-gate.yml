@@ -198,15 +198,19 @@ jobs:
           #   80-84%  = 21 pts
           #   70-79%  = 15 pts
           #   60-69%  = 10 pts
-          #   50-59%  = 5 pts
-          #   <50%    = 0 pts
+          #   50-59%  = 7 pts
+          #   30-49%  = 4 pts
+          #   20-29%  = 2 pts
+          #   <20%    = 0 pts
           if [ "$(echo "$AVG >= 95" | bc -l)" -eq 1 ]; then SCORE=30
           elif [ "$(echo "$AVG >= 90" | bc -l)" -eq 1 ]; then SCORE=27
           elif [ "$(echo "$AVG >= 85" | bc -l)" -eq 1 ]; then SCORE=24
           elif [ "$(echo "$AVG >= 80" | bc -l)" -eq 1 ]; then SCORE=21
           elif [ "$(echo "$AVG >= 70" | bc -l)" -eq 1 ]; then SCORE=15
           elif [ "$(echo "$AVG >= 60" | bc -l)" -eq 1 ]; then SCORE=10
-          elif [ "$(echo "$AVG >= 50" | bc -l)" -eq 1 ]; then SCORE=5
+          elif [ "$(echo "$AVG >= 50" | bc -l)" -eq 1 ]; then SCORE=7
+          elif [ "$(echo "$AVG >= 30" | bc -l)" -eq 1 ]; then SCORE=4
+          elif [ "$(echo "$AVG >= 20" | bc -l)" -eq 1 ]; then SCORE=2
           else SCORE=0
           fi
 
@@ -550,8 +554,8 @@ jobs:
             else if (compositeScore >= 50) { grade = 'C-'; gradeEmoji = '🟠'; }
             else { grade = 'F'; gradeEmoji = '🔴'; }
 
-            // Determine pass/fail (minimum 40 to pass during early development)
-            const passed = compositeScore >= 40;
+            // Determine pass/fail (minimum 60 to pass)
+            const passed = compositeScore >= 60;
             const verdict = passed ? '✅ PASS' : '❌ FAIL';
 
             // Build progress bars
@@ -603,14 +607,14 @@ jobs:
 
             | Component | Max | Method | Rubric |
             |-----------|-----|--------|--------|
-            | Test Coverage | 30 | \`go test -cover\` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10 |
+            | Test Coverage | 30 | \`go test -cover\` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10, 50%+=7, 30%+=4, 20%+=2 |
             | Test-Before-Code | 20 | Git commit order analysis | 100%=20, 80%+=16, 60%+=12, 40%+=8, 20%+=4 |
             | Test:Code Ratio | 15 | Line count comparison | ≥1.5x=15, ≥1.0x=13, ≥0.7x=10, ≥0.5x=7, ≥0.3x=4 |
             | Clean Architecture | 10 | Static import analysis | 0 violations=10, 1=5, 2+=0 |
             | Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |
             | Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |
 
-            **Passing score: 40/100**
+            **Passing score: 60/100**
             **Deterministic weight: 75%** (repeatable across runs)
             **LLM weight: 25%** (strict rubric minimizes variance)
 
@@ -632,5 +636,5 @@ jobs:
 
             // Fail the job if score is below threshold
             if (!passed) {
-              core.setFailed(`TDD Quality Gate failed: ${compositeScore}/100 (minimum 40 required)`);
+              core.setFailed(`TDD Quality Gate failed: ${compositeScore}/100 (minimum 60 required)`);
             }

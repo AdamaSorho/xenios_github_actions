@@ -1,0 +1,143 @@
+name: Claude TDD Fix
+
+on:
+  workflow_run:
+    workflows: ["TDD Quality Gate"]
+    types: [completed]
+
+jobs:
+  fix-tdd:
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Get PR info
+        id: pr-info
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Get the PR associated with the failed workflow run
+            const headBranch = context.payload.workflow_run.head_branch;
+            const headSha = context.payload.workflow_run.head_sha;
+
+            // Find the PR for this branch
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${headBranch}`,
+              state: 'open'
+            });
+
+            if (prs.length === 0) {
+              core.setFailed('No open PR found for branch: ' + headBranch);
+              return;
+            }
+
+            const pr = prs[0];
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_branch', headBranch);
+            core.setOutput('pr_title', pr.title);
+            core.setOutput('base_sha', pr.base.sha);
+
+            // Get the TDD report comment from the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number
+            });
+
+            const tddComment = comments.reverse().find(c => c.body.includes('TDD Quality Gate Report'));
+            core.setOutput('tdd_report', tddComment ? tddComment.body : 'No TDD report found');
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr-info.outputs.pr_branch }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "Claude"
+          git config --global user.email "claude[bot]@users.noreply.github.com"
+
+      - name: Claude Fixes TDD Issues
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
+          prompt: |
+            The TDD Quality Gate FAILED for PR #${{ steps.pr-info.outputs.pr_number }} ("${{ steps.pr-info.outputs.pr_title }}").
+
+            ## TDD Report
+
+            ${{ steps.pr-info.outputs.tdd_report }}
+
+            ## Your Task
+
+            Fix the TDD issues to bring the score above 60/100. Focus on:
+
+            1. **Low coverage**: Add more tests to increase code coverage
+            2. **Missing edge case tests**: Add boundary tests, input validation tests
+            3. **Missing error handling tests**: Test error paths and error propagation
+            4. **Clean architecture violations**: Fix any import violations
+
+            ## Instructions
+
+            1. READ the TDD report carefully to understand what's failing
+            2. READ the existing test files and implementation files
+            3. ADD missing tests (edge cases, error handling, boundary conditions)
+            4. ENSURE all tests pass: `go test ./...` for backend
+            5. CHECK coverage improved: `go test -cover ./...`
+            6. COMMIT your changes to the current branch with message "[TDD] Improve test coverage and quality"
+            7. PUSH to the PR branch
+
+            ## Architecture Rules (Must Follow)
+
+            - Dependencies flow INWARD only
+            - Domain layer has NO external dependencies
+            - Backend is the ONLY app that accesses the database
+            - No ORMs allowed in Backend (use pgx/raw SQL only)
+
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in CI. Never ask questions. Always complete the fix.
+            Push your changes directly to the PR branch: ${{ steps.pr-info.outputs.pr_branch }}
+          claude_args: |
+            --max-turns 25
+            --model claude-sonnet-4-5-20250929
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+
+      - name: Post fix notification
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr-info.outputs.pr_number }},
+              body: '🔧 **Claude TDD Fix**: Pushed improvements to address TDD Quality Gate failures. A new TDD gate run should start automatically.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+            });

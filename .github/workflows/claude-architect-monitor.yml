@@ -95,7 +95,7 @@ jobs:
 
       - name: Check If All Batch Issues Closed
         id: check-completion
-        if: fromJSON(steps.extract-batch.outputs.result).checkBatch == true
+        if: steps.extract-batch.outcome == 'success' && fromJSON(steps.extract-batch.outputs.result).checkBatch == true
         uses: actions/github-script@v8
         with:
           script: |
@@ -149,7 +149,7 @@ jobs:
             };
 
       - name: Notify Batch Complete
-        if: fromJSON(steps.check-completion.outputs.result).allClosed == true
+        if: steps.check-completion.outcome == 'success' && fromJSON(steps.check-completion.outputs.result).allClosed == true
         uses: actions/github-script@v8
         with:
           script: |
@@ -196,7 +196,7 @@ jobs:
             console.log(`Posted completion notification on Master Plan #${result.masterNumber}`);
 
       - name: Update Master Plan Checkboxes
-        if: fromJSON(steps.check-completion.outputs.result).allClosed == true
+        if: steps.check-completion.outcome == 'success' && fromJSON(steps.check-completion.outputs.result).allClosed == true
         uses: actions/github-script@v8
         with:
           script: |
@@ -254,7 +254,7 @@ jobs:
 
       - name: Post Progress Update (Partial Completion)
         if: |
-          fromJSON(steps.check-completion.outputs.result).checkBatch == true &&
+          steps.check-completion.outcome == 'success' &&
           fromJSON(steps.check-completion.outputs.result).allClosed == false
         uses: actions/github-script@v8
         with:

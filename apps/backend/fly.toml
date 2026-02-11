@@ -1,21 +1,27 @@
-app = "xenios-api"
-primary_region = "iad"
+# fly.toml app configuration file generated for xenios-api on 2026-02-11T09:49:16-06:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'xenios-api'
+primary_region = 'iad'
 
 [build]
+
+[env]
+  ENVIRONMENT = 'production'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 1
-  processes = ["app"]
+  processes = ['app']
 
 [[vm]]
-  memory = "256mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
-
-[env]
-  PORT = "8080"
-  ENVIRONMENT = "production"
+  memory_mb = 256

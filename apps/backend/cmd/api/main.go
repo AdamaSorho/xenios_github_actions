@@ -32,10 +32,11 @@ func main() {
 
 	// HTTP handlers
 	userHandler := handler.NewUserHandler(getUserUseCase, createUserUseCase)
+	healthHandler := handler.NewHealthHandler()
 
 	// Setup routes
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /health", healthHandler.Health)
 	mux.HandleFunc("GET /api/users/{id}", userHandler.GetUser)
 	mux.HandleFunc("POST /api/users", userHandler.CreateUser)
 
@@ -68,10 +69,4 @@ func main() {
 	}
 
 	log.Println("Server exited")
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
 }

@@ -476,9 +476,8 @@ jobs:
             ```
           claude_args: |
             --max-turns 15
-            --model claude-opus-4-5-20251101
+            --model claude-sonnet-4-5-20250929
             --allowedTools Bash,Read,Glob,Grep
-            --output-format json
 
       # ═══════════════════════════════════════════════════════════════
       # COMPOSITE SCORE & REPORT

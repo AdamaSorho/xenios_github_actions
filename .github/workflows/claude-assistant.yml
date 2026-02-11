@@ -61,5 +61,5 @@ jobs:
             - If you need more context, read the relevant files in the repository
           claude_args: |
             --max-turns 20
-            --model claude-opus-4-5-20251101
+            --model claude-sonnet-4-5-20250929
             --allowedTools Bash,Read,Glob,Grep,WebSearch,WebFetch

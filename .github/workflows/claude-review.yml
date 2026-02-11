@@ -263,7 +263,7 @@ jobs:
 
           claude_args: |
             --max-turns 50
-            --model claude-opus-4-5-20251101
+            --model claude-sonnet-4-5-20250929
             --allowedTools Bash,Read,Write,Glob,Grep,WebSearch,WebFetch
 
       - name: Read Review Results

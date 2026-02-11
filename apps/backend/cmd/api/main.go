@@ -10,37 +10,23 @@ import (
 	"time"
 
 	"github.com/xenios/backend/internal/adapter/handler"
-	"github.com/xenios/backend/internal/adapter/repository"
-	"github.com/xenios/backend/internal/infrastructure/config"
-	"github.com/xenios/backend/internal/infrastructure/database"
-	"github.com/xenios/backend/internal/usecase"
 )
 
 func main() {
-	cfg := config.Load()
-
-	db, err := database.Connect(cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
-	defer db.Close()
-
-	// Wire up dependencies (Clean Architecture: outer layers depend on inner)
-	userRepo := repository.NewPostgresUserRepository(db)
-	getUserUseCase := usecase.NewGetUserUseCase(userRepo)
-	createUserUseCase := usecase.NewCreateUserUseCase(userRepo)
 
 	// HTTP handlers
-	userHandler := handler.NewUserHandler(getUserUseCase, createUserUseCase)
+	healthHandler := handler.NewHealthHandler()
 
 	// Setup routes
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /api/users/{id}", userHandler.GetUser)
-	mux.HandleFunc("POST /api/users", userHandler.CreateUser)
+	mux.HandleFunc("GET /health", healthHandler.Health)
 
 	server := &http.Server{
-		Addr:         ":" + cfg.Port,
+		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -49,7 +35,7 @@ func main() {
 
 	// Graceful shutdown
 	go func() {
-		log.Printf("Server starting on port %s", cfg.Port)
+		log.Printf("Server starting on port %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
@@ -68,10 +54,4 @@ func main() {
 	}
 
 	log.Println("Server exited")
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
 }

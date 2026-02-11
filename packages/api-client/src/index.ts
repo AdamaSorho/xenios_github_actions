@@ -1,2 +1,2 @@
-export { apiClient } from './client'
-export type { ApiClientConfig, ApiResponse } from './client'
+// API client for Xenios Backend.
+// Client will be added here as features are built.

@@ -19,9 +19,11 @@ func main() {
 	}
 
 	healthHandler := handler.NewHealthHandler()
+	versionHandler := handler.NewVersionHandler()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.Health)
+	mux.HandleFunc("GET /version", versionHandler.Version)
 
 	server := &http.Server{
 		Addr:         ":" + port,

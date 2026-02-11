@@ -478,6 +478,7 @@ jobs:
             --max-turns 15
             --model claude-sonnet-4-5-20250929
             --allowedTools Bash,Read,Glob,Grep
+            --json-schema '{"type":"object","properties":{"edge_case_score":{"type":"number"},"error_handling_score":{"type":"number"},"boundary_details":{"type":"string"},"validation_details":{"type":"string"},"concurrency_details":{"type":"string"},"error_path_details":{"type":"string"},"error_propagation_details":{"type":"string"}},"required":["edge_case_score","error_handling_score","boundary_details","validation_details","concurrency_details","error_path_details","error_propagation_details"]}'
 
       # ═══════════════════════════════════════════════════════════════
       # COMPOSITE SCORE & REPORT
@@ -520,7 +521,7 @@ jobs:
             let llmDetails = {};
 
             try {
-              const claudeOutput = `${{ steps.claude-assessment.outputs.result || '{}' }}`;
+              const claudeOutput = `${{ steps.claude-assessment.outputs.structured_output || '{}' }}`;
               const parsed = JSON.parse(claudeOutput);
               edgeCaseScore = Math.min(15, Math.max(0, parsed.edge_case_score || 0));
               errorHandlingScore = Math.min(10, Math.max(0, parsed.error_handling_score || 0));

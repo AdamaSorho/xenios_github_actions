@@ -14,6 +14,7 @@ jobs:
   claude-response:
     if: |
       contains(github.event.comment.body, '@claude') ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && github.event.action == 'assigned' && github.event.assignee.login == 'claude-bot')
     runs-on: ubuntu-latest
     permissions:
@@ -25,6 +26,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "Claude"
+          git config --global user.email "claude[bot]@users.noreply.github.com"
 
       - name: Claude Assistant Response
         uses: anthropics/claude-code-action@v1
@@ -33,8 +55,10 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: '@claude'
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
             You are a helpful assistant for the Xenios platform.
+            You can both ANSWER questions and FIX code when asked.
 
             ## Context
             This is a monorepo with:
@@ -42,16 +66,36 @@ jobs:
             - Next.js web app (apps/web) - Clean Architecture
             - React Native mobile app (apps/mobile) - Clean Architecture
 
-            ## Rules
-            - Follow Clean Architecture: dependencies flow INWARD only
+            ## Architecture Rules (Must Follow)
+            - Dependencies flow INWARD only
+            - Domain layer has NO external dependencies
             - Backend is the ONLY app that accesses the database
             - Web and Mobile call Backend API, never database directly
+            - No ORMs allowed in Backend (use pgx/raw SQL only)
             - Use TDD: write tests first, then implementation
-            - No ORMs allowed in Backend (use pgx/raw SQL)
 
-            ## Your Role
-            Help with code reviews, questions, explanations, and suggestions.
-            Be concise and actionable in your responses.
+            ## Your Capabilities
+
+            ### Answering Questions
+            When asked a question, read the relevant code and give concise, actionable answers.
+
+            ### Fixing Code (When Asked)
+            When someone asks you to fix something (review feedback, TDD failures, bugs, etc.):
+
+            1. READ the feedback/comments carefully to understand what needs fixing
+            2. READ the relevant source and test files
+            3. MAKE the necessary code changes
+            4. RUN tests to verify: `go test ./...` for Go, `npm test` for TypeScript
+            5. COMMIT with a descriptive message: `[Fix] <what was fixed>`
+            6. PUSH to the current PR branch
+
+            ### Handling PR Review Feedback
+            When triggered on a PR with review comments:
+            1. Read ALL review comments on the PR
+            2. Address each piece of feedback
+            3. Run tests to ensure nothing breaks
+            4. Commit and push the fixes
+            5. Reply summarizing what was fixed
 
             ## IMPORTANT: Non-Interactive Mode
 
@@ -59,7 +103,8 @@ jobs:
             - NEVER stop to ask for clarification - make reasonable assumptions
             - Respond directly to the comment or issue
             - If you need more context, read the relevant files in the repository
+            - If asked to fix something, always complete the fix and push
           claude_args: |
-            --max-turns 20
+            --max-turns 30
             --model claude-sonnet-4-5-20250929
-            --allowedTools Bash,Read,Glob,Grep,WebSearch,WebFetch
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch

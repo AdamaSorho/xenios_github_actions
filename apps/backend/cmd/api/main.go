@@ -73,6 +73,12 @@ func setupHealthHandler() (*handler.HealthHandler, func()) {
 		return handler.NewHealthHandler(), func() {}
 	}
 
+	return wireHealthHandler(pool)
+}
+
+// wireHealthHandler sets up the health checking infrastructure with an established database pool.
+// This is separated from setupHealthHandler for testability.
+func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 	log.Println("Database connection pool established successfully")
 
 	// Wire up the health checking infrastructure (Clean Architecture)

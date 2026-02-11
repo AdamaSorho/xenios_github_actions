@@ -146,6 +146,6 @@ jobs:
             - If you need more context, read the relevant files in the repository
             - If asked to fix something, always complete the fix and push
           claude_args: |
-            --max-turns 30
+            --max-turns 50
             --model claude-sonnet-4-5-20250929
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch

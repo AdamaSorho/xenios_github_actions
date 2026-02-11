@@ -3,6 +3,12 @@ name: TDD Quality Gate
 on:
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to run TDD gate on'
+        required: true
+        type: number
 
 jobs:
   tdd-enforcement:
@@ -14,9 +20,39 @@ jobs:
       id-token: write
 
     steps:
+      - name: Resolve PR context
+        id: pr-context
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let prNumber, baseSha, headSha, branch;
+
+            if (context.eventName === 'workflow_dispatch') {
+              prNumber = parseInt('${{ github.event.inputs.pr_number }}');
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              baseSha = pr.base.sha;
+              headSha = pr.head.sha;
+              branch = pr.head.ref;
+            } else {
+              prNumber = context.payload.pull_request.number;
+              baseSha = context.payload.pull_request.base.sha;
+              headSha = context.payload.pull_request.head.sha;
+              branch = context.payload.pull_request.head.ref;
+            }
+
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('base_sha', baseSha);
+            core.setOutput('head_sha', headSha);
+            core.setOutput('branch', branch);
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.pr-context.outputs.branch }}
           fetch-depth: 0 # Full history for commit order analysis
 
       - name: Setup Node.js
@@ -225,8 +261,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BASE_SHA=${{ github.event.pull_request.base.sha }}
-          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+          BASE_SHA=${{ steps.pr-context.outputs.base_sha }}
+          HEAD_SHA=${{ steps.pr-context.outputs.head_sha }}
 
           # Get all commits in this PR
           COMMITS=$(git log --reverse --format="%H" ${BASE_SHA}..${HEAD_SHA})
@@ -319,7 +355,7 @@ jobs:
       - name: Calculate test-to-code ratio
         id: test-code-ratio
         run: |
-          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          BASE_SHA=${{ steps.pr-context.outputs.base_sha }}
 
           # Count lines in changed files
           TEST_LINES=0
@@ -420,7 +456,7 @@ jobs:
 
             Run this command to get the list of changed files:
             ```
-            git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD
+            git diff --name-only ${{ steps.pr-context.outputs.base_sha }}...HEAD
             ```
 
             Read ALL changed test files and implementation files.
@@ -511,6 +547,7 @@ jobs:
           IMPL_LINES: ${{ steps.test-code-ratio.outputs.impl_lines || '0' }}
           ARCH_SCORE: ${{ steps.arch-score.outputs.score || '0' }}
           ARCH_VIOLATIONS: ${{ steps.arch-score.outputs.violations || '0' }}
+          PR_NUMBER: ${{ steps.pr-context.outputs.pr_number }}
         with:
           script: |
             // Parse deterministic scores
@@ -625,7 +662,7 @@ jobs:
 
             // Post as PR comment
             await github.rest.issues.createComment({
-              issue_number: context.issue.number,
+              issue_number: parseInt(process.env.PR_NUMBER),
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: report

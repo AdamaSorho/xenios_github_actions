@@ -139,5 +139,12 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ steps.pr-info.outputs.pr_number }},
-              body: '🔧 **Claude TDD Fix**: Pushed improvements to address TDD Quality Gate failures. A new TDD gate run should start automatically.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+              body: '🔧 **Claude TDD Fix**: Pushed improvements to address TDD Quality Gate failures. Triggering TDD gate re-run...\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)'
             });
+
+      - name: Trigger TDD gate re-run
+        if: success()
+        run: |
+          gh workflow run tdd-gate.yml -f pr_number=${{ steps.pr-info.outputs.pr_number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

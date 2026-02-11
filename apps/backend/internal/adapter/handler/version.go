@@ -31,9 +31,13 @@ func (h *VersionHandler) Version(w http.ResponseWriter, r *http.Request) {
 		environment = "development"
 	}
 
-	respondJSON(w, http.StatusOK, VersionResponse{
+	if err := respondJSON(w, http.StatusOK, VersionResponse{
 		Version:     Version,
 		Environment: environment,
 		GoVersion:   runtime.Version(),
-	})
+	}); err != nil {
+		// Error already written to response, log it
+		// TODO: Add proper logging when logger is available
+		return
+	}
 }

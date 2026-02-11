@@ -270,11 +270,13 @@ jobs:
         id: read-review
         run: |
           if [ -f /tmp/pr-review.md ]; then
-            # Extract verdict from the review
-            if grep -q "✅ APPROVE" /tmp/pr-review.md; then
+            # Extract verdict - match with or without emoji
+            if grep -qiE "(✅\s*)?APPROVE" /tmp/pr-review.md && ! grep -qi "REQUEST_CHANGES" /tmp/pr-review.md; then
               echo "verdict=APPROVE" >> $GITHUB_OUTPUT
-            else
+            elif grep -qi "REQUEST_CHANGES" /tmp/pr-review.md; then
               echo "verdict=REQUEST_CHANGES" >> $GITHUB_OUTPUT
+            else
+              echo "verdict=COMMENT" >> $GITHUB_OUTPUT
             fi
             echo "review_exists=true" >> $GITHUB_OUTPUT
           else
@@ -293,39 +295,27 @@ jobs:
             if (fs.existsSync('/tmp/pr-review.md')) {
               reviewBody = fs.readFileSync('/tmp/pr-review.md', 'utf8');
             } else {
-              reviewBody = `## 🔍 Claude Code Review
-
-            **Status**: ⚠️ Review incomplete - check workflow logs for details.
-
-            [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            ---
-            🤖 Claude Reviewer`;
+              reviewBody = `## Claude Code Review\n\n**Status**: Review incomplete - check workflow logs for details.\n\n[View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\nClaude Reviewer`;
             }
 
-            // Add workflow link to the review
+            // Truncate if too long (GitHub comment limit is 65536 chars)
+            if (reviewBody.length > 60000) {
+              reviewBody = reviewBody.substring(0, 60000) + '\n\n... (truncated - see workflow logs for full review)';
+            }
+
             reviewBody += `\n\n[View Full Workflow Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
 
-            // Determine review event type based on verdict
             const verdict = '${{ steps.read-review.outputs.verdict }}';
-            let event = 'COMMENT';
 
-            if (verdict === 'APPROVE') {
-              event = 'APPROVE';
-            } else if (verdict === 'REQUEST_CHANGES') {
-              event = 'REQUEST_CHANGES';
-            }
-
-            // Submit the review
-            await github.rest.pulls.createReview({
+            // Post as PR comment (more reliable than createReview which can fail with bot tokens)
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: prNumber,
-              body: reviewBody,
-              event: event
+              issue_number: prNumber,
+              body: reviewBody
             });
 
-            console.log(`Posted ${event} review on PR #${prNumber}`);
+            console.log(`Posted ${verdict} review comment on PR #${prNumber}`);
 
       - name: Add Review Label
         if: always()

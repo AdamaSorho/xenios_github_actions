@@ -18,16 +18,18 @@ import (
 var startTime = time.Now()
 
 func main() {
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 	runServer(server)
 }
 
-// setupServer creates and configures the HTTP server
-func setupServer() *http.Server {
+// setupServer creates and configures the HTTP server.
+// Returns the server and a cleanup function to close resources.
+func setupServer() (*http.Server, func()) {
 	port := getPort()
 
 	// Set up health handler with optional database connectivity
-	healthHandler := setupHealthHandler()
+	healthHandler, cleanup := setupHealthHandler()
 	versionHandler := handler.NewVersionHandler()
 
 	mux := http.NewServeMux()
@@ -40,17 +42,18 @@ func setupServer() *http.Server {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
-	}
+	}, cleanup
 }
 
 // setupHealthHandler creates a health handler with optional database connectivity.
 // If DATABASE_URL is not set, returns a handler with no use case (legacy behavior).
 // If DATABASE_URL is set, wires up the full health checking infrastructure.
-func setupHealthHandler() *handler.HealthHandler {
+// Returns the handler and a cleanup function to close the database pool.
+func setupHealthHandler() (*handler.HealthHandler, func()) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Println("DATABASE_URL not set, health check will not verify database connectivity")
-		return handler.NewHealthHandler()
+		return handler.NewHealthHandler(), func() {}
 	}
 
 	// Set up database connection pool
@@ -59,7 +62,7 @@ func setupHealthHandler() *handler.HealthHandler {
 	if err != nil {
 		log.Printf("Warning: failed to create database connection pool: %v", err)
 		log.Println("Health check will not verify database connectivity")
-		return handler.NewHealthHandler()
+		return handler.NewHealthHandler(), func() {}
 	}
 
 	// Verify initial connection
@@ -67,7 +70,7 @@ func setupHealthHandler() *handler.HealthHandler {
 		log.Printf("Warning: failed to ping database: %v", err)
 		log.Println("Health check will not verify database connectivity")
 		pool.Close()
-		return handler.NewHealthHandler()
+		return handler.NewHealthHandler(), func() {}
 	}
 
 	log.Println("Database connection pool established successfully")
@@ -76,7 +79,14 @@ func setupHealthHandler() *handler.HealthHandler {
 	healthChecker := repository.NewPostgresHealthChecker(pool, 3*time.Second)
 	healthUseCase := usecase.NewGetHealthStatusUseCase(healthChecker, startTime)
 
-	return handler.NewHealthHandlerWithUseCase(healthUseCase)
+	// Return handler and cleanup function to close the pool
+	cleanup := func() {
+		log.Println("Closing database connection pool...")
+		pool.Close()
+		log.Println("Database connection pool closed")
+	}
+
+	return handler.NewHealthHandlerWithUseCase(healthUseCase), cleanup
 }
 
 // getPort returns the port to listen on

@@ -83,7 +83,8 @@ func TestSetupServer_Configuration(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert - verify configuration
 	if server.Addr != ":8080" {
@@ -121,7 +122,8 @@ func TestSetupServer_HealthEndpoint(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Start server in background
 	go func() {
@@ -166,7 +168,8 @@ func TestSetupServer_VersionEndpoint(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Start server
 	go func() {
@@ -211,7 +214,8 @@ func TestSetupServer_CustomPort(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert
 	expectedAddr := ":" + customPort
@@ -222,7 +226,8 @@ func TestSetupServer_CustomPort(t *testing.T) {
 
 func TestSetupServer_NotNil(t *testing.T) {
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert
 	if server == nil {
@@ -232,7 +237,8 @@ func TestSetupServer_NotNil(t *testing.T) {
 
 func TestSetupServer_HandlerNotNil(t *testing.T) {
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert
 	if server.Handler == nil {
@@ -242,7 +248,8 @@ func TestSetupServer_HandlerNotNil(t *testing.T) {
 
 func TestSetupServer_TimeoutValues(t *testing.T) {
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert - verify specific timeout values
 	if server.ReadTimeout != 15*time.Second {
@@ -309,7 +316,8 @@ func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Start server
 	go func() {

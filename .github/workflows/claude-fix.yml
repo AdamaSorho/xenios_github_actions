@@ -44,6 +44,7 @@ jobs:
         with:
           # Using Claude Max subscription via OAuth token (flat $200/month)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
             BUG REPORT: #${{ github.event.issue.number }}
             TITLE: ${{ github.event.issue.title }}

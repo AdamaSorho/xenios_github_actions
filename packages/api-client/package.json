@@ -11,7 +11,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@xenios/shared-types": "workspace:*"
+    "@xenios/shared-types": "*"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

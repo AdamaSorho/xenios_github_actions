@@ -13,8 +13,8 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@xenios/api-client": "workspace:*",
-    "@xenios/shared-types": "workspace:*",
+    "@xenios/api-client": "*",
+    "@xenios/shared-types": "*",
     "next": "^16.1.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

@@ -1,7 +1,7 @@
 # Codev
+codev/
 .agent-farm/
 .consult/
-codev/.update-hashes.json
 .builders/
 
 # Dependencies

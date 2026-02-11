@@ -118,6 +118,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
             You are a senior code reviewer for the Xenios platform. Review this PR thoroughly and provide actionable feedback.
 

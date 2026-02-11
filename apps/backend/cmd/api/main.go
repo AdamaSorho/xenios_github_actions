@@ -13,10 +13,13 @@ import (
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	server := setupServer()
+	runServer(server)
+}
+
+// setupServer creates and configures the HTTP server
+func setupServer() *http.Server {
+	port := getPort()
 
 	healthHandler := handler.NewHealthHandler()
 	versionHandler := handler.NewVersionHandler()
@@ -25,17 +28,29 @@ func main() {
 	mux.HandleFunc("GET /health", healthHandler.Health)
 	mux.HandleFunc("GET /version", versionHandler.Version)
 
-	server := &http.Server{
+	return &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+}
 
+// getPort returns the port to listen on
+func getPort() string {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	return port
+}
+
+// runServer starts the server and handles graceful shutdown
+func runServer(server *http.Server) {
 	// Graceful shutdown
 	go func() {
-		log.Printf("Server starting on port %s", port)
+		log.Printf("Server starting on port %s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

@@ -24,9 +24,43 @@ jobs:
       id-token: write
 
     steps:
+      - name: Get PR branch
+        id: pr-info
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let branch = '';
+            let prNumber = '';
+
+            // For issue_comment on a PR
+            if (context.eventName === 'issue_comment' && context.payload.issue.pull_request) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.issue.number
+              });
+              branch = pr.head.ref;
+              prNumber = pr.number;
+            }
+            // For pull_request_review_comment
+            else if (context.eventName === 'pull_request_review_comment') {
+              branch = context.payload.pull_request.head.ref;
+              prNumber = context.payload.pull_request.number;
+            }
+            // For pull_request_review
+            else if (context.eventName === 'pull_request_review') {
+              branch = context.payload.pull_request.head.ref;
+              prNumber = context.payload.pull_request.number;
+            }
+
+            core.setOutput('branch', branch);
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('is_pr', branch ? 'true' : 'false');
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.pr-info.outputs.branch || github.ref }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -74,6 +108,11 @@ jobs:
             - No ORMs allowed in Backend (use pgx/raw SQL only)
             - Use TDD: write tests first, then implementation
 
+            ## Current Branch Context
+            You are on branch: ${{ steps.pr-info.outputs.branch || 'main' }}
+            PR number: ${{ steps.pr-info.outputs.pr_number || 'N/A' }}
+            Is PR: ${{ steps.pr-info.outputs.is_pr }}
+
             ## Your Capabilities
 
             ### Answering Questions
@@ -82,20 +121,21 @@ jobs:
             ### Fixing Code (When Asked)
             When someone asks you to fix something (review feedback, TDD failures, bugs, etc.):
 
-            1. READ the feedback/comments carefully to understand what needs fixing
+            1. READ the PR comments and TDD reports to understand what needs fixing
             2. READ the relevant source and test files
             3. MAKE the necessary code changes
             4. RUN tests to verify: `go test ./...` for Go, `npm test` for TypeScript
             5. COMMIT with a descriptive message: `[Fix] <what was fixed>`
-            6. PUSH to the current PR branch
+            6. PUSH to the PR branch: `git push origin ${{ steps.pr-info.outputs.branch }}`
 
-            ### Handling PR Review Feedback
-            When triggered on a PR with review comments:
-            1. Read ALL review comments on the PR
-            2. Address each piece of feedback
-            3. Run tests to ensure nothing breaks
-            4. Commit and push the fixes
-            5. Reply summarizing what was fixed
+            ### Fixing TDD Failures
+            When asked to fix TDD failures:
+            1. Find the latest TDD Quality Gate Report comment on this PR
+            2. Read the report to understand what's failing (low coverage, missing tests, etc.)
+            3. Read existing test files and implementation files
+            4. Add missing tests (edge cases, error handling, boundary conditions)
+            5. Ensure all tests pass
+            6. Commit and push
 
             ## IMPORTANT: Non-Interactive Mode
 

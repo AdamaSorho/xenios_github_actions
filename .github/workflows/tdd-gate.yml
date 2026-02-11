@@ -511,6 +511,7 @@ jobs:
           IMPL_LINES: ${{ steps.test-code-ratio.outputs.impl_lines || '0' }}
           ARCH_SCORE: ${{ steps.arch-score.outputs.score || '0' }}
           ARCH_VIOLATIONS: ${{ steps.arch-score.outputs.violations || '0' }}
+          CLAUDE_OUTPUT: ${{ steps.claude-assessment.outputs.structured_output || '{}' }}
         with:
           script: |
             // Parse deterministic scores
@@ -519,19 +520,19 @@ jobs:
             const testCodeScore = parseInt(process.env.TEST_CODE_SCORE);
             const archScore = parseInt(process.env.ARCH_SCORE);
 
-            // Parse LLM assessment
+            // Parse LLM assessment (via env var to avoid template literal escape issues)
             let edgeCaseScore = 0;
             let errorHandlingScore = 0;
             let llmDetails = {};
 
             try {
-              const claudeOutput = `${{ steps.claude-assessment.outputs.structured_output || '{}' }}`;
-              const parsed = JSON.parse(claudeOutput);
+              const parsed = JSON.parse(process.env.CLAUDE_OUTPUT);
               edgeCaseScore = Math.min(15, Math.max(0, parsed.edge_case_score || 0));
               errorHandlingScore = Math.min(10, Math.max(0, parsed.error_handling_score || 0));
               llmDetails = parsed;
             } catch (e) {
               console.log('Could not parse Claude assessment, using 0 for LLM scores');
+              console.log('Raw output:', process.env.CLAUDE_OUTPUT);
               edgeCaseScore = 0;
               errorHandlingScore = 0;
             }

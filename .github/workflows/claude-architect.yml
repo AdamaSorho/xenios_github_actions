@@ -177,7 +177,7 @@ jobs:
 
             Repository: ${{ github.repository }}
             Event: ${{ github.event_name }}
-            Mode: ${{ github.event.inputs.mode || 'preview' }}
+            Mode: ${{ github.event.inputs.mode || (github.event_name == 'issue_comment' && 'create') || 'preview' }}
             Batch Action: ${{ github.event.inputs.batch_action || (github.event_name == 'issue_comment' && fromJSON(steps.parse-command.outputs.result).action) || 'new' }}
             Priority: ${{ github.event.inputs.priority || 'medium' }}
             Master Plan Issue: ${{ github.event.inputs.master_plan_issue || (github.event_name == 'issue_comment' && fromJSON(steps.parse-command.outputs.result).masterPlanIssue) || '' }}
@@ -439,7 +439,7 @@ jobs:
 
             ## Mode Handling
 
-            Mode: ${{ github.event.inputs.mode || 'preview' }}
+            Mode: ${{ github.event.inputs.mode || (github.event_name == 'issue_comment' && 'create') || 'preview' }}
 
             - If mode is 'preview': Output a markdown summary of all planned issues. Do NOT create any issues.
             - If mode is 'draft': Create issues but add "[DRAFT]" prefix to titles

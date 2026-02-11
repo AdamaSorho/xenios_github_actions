@@ -404,6 +404,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
             You are a TDD compliance auditor. Score this PR using the STRICT rubric below.
             You MUST output ONLY valid JSON matching the schema. No other text.

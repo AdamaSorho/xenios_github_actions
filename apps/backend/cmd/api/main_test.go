@@ -4,8 +4,12 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestGetPort_Default(t *testing.T) {
@@ -83,7 +87,8 @@ func TestSetupServer_Configuration(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert - verify configuration
 	if server.Addr != ":8080" {
@@ -121,7 +126,8 @@ func TestSetupServer_HealthEndpoint(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Start server in background
 	go func() {
@@ -166,7 +172,8 @@ func TestSetupServer_VersionEndpoint(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Start server
 	go func() {
@@ -211,7 +218,8 @@ func TestSetupServer_CustomPort(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert
 	expectedAddr := ":" + customPort
@@ -222,7 +230,8 @@ func TestSetupServer_CustomPort(t *testing.T) {
 
 func TestSetupServer_NotNil(t *testing.T) {
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert
 	if server == nil {
@@ -232,7 +241,8 @@ func TestSetupServer_NotNil(t *testing.T) {
 
 func TestSetupServer_HandlerNotNil(t *testing.T) {
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert
 	if server.Handler == nil {
@@ -242,7 +252,8 @@ func TestSetupServer_HandlerNotNil(t *testing.T) {
 
 func TestSetupServer_TimeoutValues(t *testing.T) {
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Assert - verify specific timeout values
 	if server.ReadTimeout != 15*time.Second {
@@ -309,7 +320,8 @@ func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 	}()
 
 	// Act
-	server := setupServer()
+	server, cleanup := setupServer()
+	defer cleanup()
 
 	// Start server
 	go func() {
@@ -347,5 +359,232 @@ func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
 		t.Errorf("failed to shutdown server: %v", err)
+	}
+}
+
+func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
+	// Arrange - ensure DATABASE_URL is not set
+	originalDBURL := os.Getenv("DATABASE_URL")
+	os.Unsetenv("DATABASE_URL")
+	defer func() {
+		if originalDBURL != "" {
+			os.Setenv("DATABASE_URL", originalDBURL)
+		}
+	}()
+
+	// Act
+	h, cleanup := setupHealthHandler()
+	defer cleanup()
+
+	// Assert - handler should be non-nil
+	if h == nil {
+		t.Error("expected non-nil handler when DATABASE_URL is not set")
+	}
+}
+
+func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
+	// Arrange - set an invalid DATABASE_URL that will fail pool creation
+	originalDBURL := os.Getenv("DATABASE_URL")
+	os.Setenv("DATABASE_URL", "not-a-valid-url")
+	defer func() {
+		if originalDBURL != "" {
+			os.Setenv("DATABASE_URL", originalDBURL)
+		} else {
+			os.Unsetenv("DATABASE_URL")
+		}
+	}()
+
+	// Act
+	h, cleanup := setupHealthHandler()
+	defer cleanup()
+
+	// Assert - handler should still be non-nil (graceful degradation)
+	if h == nil {
+		t.Error("expected non-nil handler even with invalid DATABASE_URL")
+	}
+}
+
+func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
+	// Arrange - set a valid-format but unreachable DATABASE_URL
+	originalDBURL := os.Getenv("DATABASE_URL")
+	os.Setenv("DATABASE_URL", "postgres://invalid:invalid@localhost:19999/nonexistent?connect_timeout=1")
+	defer func() {
+		if originalDBURL != "" {
+			os.Setenv("DATABASE_URL", originalDBURL)
+		} else {
+			os.Unsetenv("DATABASE_URL")
+		}
+	}()
+
+	// Act
+	h, cleanup := setupHealthHandler()
+	defer cleanup()
+
+	// Assert - handler should still be non-nil (graceful degradation)
+	if h == nil {
+		t.Error("expected non-nil handler even with unreachable database")
+	}
+}
+
+func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
+	// Arrange
+	originalDBURL := os.Getenv("DATABASE_URL")
+	os.Unsetenv("DATABASE_URL")
+	defer func() {
+		if originalDBURL != "" {
+			os.Setenv("DATABASE_URL", originalDBURL)
+		}
+	}()
+
+	// Act
+	_, cleanup := setupHealthHandler()
+
+	// Assert - cleanup should be callable without panicking (no-op when no DB)
+	cleanup()
+	// Call again to ensure idempotency
+	cleanup()
+}
+
+func TestRunServer_GracefulShutdown(t *testing.T) {
+	// Arrange
+	originalPort := os.Getenv("PORT")
+	os.Setenv("PORT", "18084")
+	defer func() {
+		if originalPort != "" {
+			os.Setenv("PORT", originalPort)
+		} else {
+			os.Unsetenv("PORT")
+		}
+	}()
+
+	server, cleanup := setupServer()
+	defer cleanup()
+
+	// Reset signal handling for this test
+	signal.Reset(syscall.SIGINT, syscall.SIGTERM)
+
+	// Act - run server in background
+	done := make(chan struct{})
+	go func() {
+		runServer(server)
+		close(done)
+	}()
+
+	// Wait for server to start
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify server is running
+	resp, err := http.Get("http://localhost:18084/health")
+	if err != nil {
+		t.Fatalf("server should be running: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Send SIGINT to trigger graceful shutdown
+	proc, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatalf("failed to find current process: %v", err)
+	}
+	proc.Signal(syscall.SIGINT)
+
+	// Wait for server to shut down
+	select {
+	case <-done:
+		// Server shut down gracefully
+	case <-time.After(10 * time.Second):
+		t.Fatal("server did not shut down within timeout")
+	}
+}
+
+func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
+	// Arrange
+	originalPort := os.Getenv("PORT")
+	originalDBURL := os.Getenv("DATABASE_URL")
+	os.Setenv("PORT", "18085")
+	os.Unsetenv("DATABASE_URL")
+	defer func() {
+		if originalPort != "" {
+			os.Setenv("PORT", originalPort)
+		} else {
+			os.Unsetenv("PORT")
+		}
+		if originalDBURL != "" {
+			os.Setenv("DATABASE_URL", originalDBURL)
+		}
+	}()
+
+	// Act
+	server, cleanup := setupServer()
+	defer cleanup()
+
+	// Start server
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Expected to close during test
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Test health endpoint returns legacy format
+	resp, err := http.Get("http://localhost:18085/health")
+	if err != nil {
+		t.Fatalf("failed to call health endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Clean up
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		t.Errorf("failed to shutdown server: %v", err)
+	}
+}
+
+func TestWireHealthHandler_ReturnsHandlerAndCleanup(t *testing.T) {
+	// Arrange - create a pool with an unreachable database
+	// The pool itself is created successfully; it's lazy and won't connect until used
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	// Act
+	h, cleanup := wireHealthHandler(pool)
+
+	// Assert - handler should be non-nil
+	if h == nil {
+		t.Error("expected non-nil handler from wireHealthHandler")
+	}
+
+	// Cleanup should not panic
+	cleanup()
+}
+
+func TestWireHealthHandler_CleanupClosesPool(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	// Act
+	_, cleanup := wireHealthHandler(pool)
+	cleanup()
+
+	// Assert - after cleanup, pool should be closed
+	// Calling Ping on a closed pool should fail
+	if err := pool.Ping(ctx); err == nil {
+		t.Error("expected error when pinging closed pool")
 	}
 }

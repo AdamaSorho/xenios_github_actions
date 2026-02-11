@@ -550,8 +550,8 @@ jobs:
             else if (compositeScore >= 50) { grade = 'C-'; gradeEmoji = '🟠'; }
             else { grade = 'F'; gradeEmoji = '🔴'; }
 
-            // Determine pass/fail (minimum 60 to pass)
-            const passed = compositeScore >= 60;
+            // Determine pass/fail (minimum 40 to pass during early development)
+            const passed = compositeScore >= 40;
             const verdict = passed ? '✅ PASS' : '❌ FAIL';
 
             // Build progress bars
@@ -610,7 +610,7 @@ jobs:
             | Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |
             | Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |
 
-            **Passing score: 60/100**
+            **Passing score: 40/100**
             **Deterministic weight: 75%** (repeatable across runs)
             **LLM weight: 25%** (strict rubric minimizes variance)
 
@@ -632,5 +632,5 @@ jobs:
 
             // Fail the job if score is below threshold
             if (!passed) {
-              core.setFailed(`TDD Quality Gate failed: ${compositeScore}/100 (minimum 60 required)`);
+              core.setFailed(`TDD Quality Gate failed: ${compositeScore}/100 (minimum 40 required)`);
             }

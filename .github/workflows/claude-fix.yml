@@ -123,17 +123,20 @@ jobs:
             echo "conflict_files=" >> $GITHUB_OUTPUT
             echo "Branch is already up to date with $BASE_BRANCH"
           else
+            # Save current HEAD to reset back
+            ORIG_HEAD=$(git rev-parse HEAD)
+
             # Attempt merge to detect conflicts
             if git merge --no-commit --no-ff "origin/$BASE_BRANCH" 2>/dev/null; then
-              # No conflicts - abort the merge so Claude can do it cleanly
-              git merge --abort
+              # Merge succeeded (no conflicts) - reset to original state
+              git reset --hard "$ORIG_HEAD"
               echo "has_conflicts=false" >> $GITHUB_OUTPUT
               echo "conflict_files=" >> $GITHUB_OUTPUT
               echo "No conflicts detected - clean merge possible"
             else
               # Conflicts detected - capture file list
               CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
-              git merge --abort
+              git merge --abort 2>/dev/null || git reset --hard "$ORIG_HEAD"
               echo "has_conflicts=true" >> $GITHUB_OUTPUT
               echo "conflict_files=$CONFLICTS" >> $GITHUB_OUTPUT
               echo "Conflicts detected in: $CONFLICTS"

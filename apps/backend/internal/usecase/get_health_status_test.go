@@ -201,6 +201,33 @@ func TestGetHealthStatusUseCase_Execute_UptimeFormatting(t *testing.T) {
 	}
 }
 
+// TestFormatUptime_AllBranches tests formatUptime with various durations covering all branches.
+func TestFormatUptime_AllBranches(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		contains string
+	}{
+		{"Zero", 0, "0s"},
+		{"Seconds only", 45 * time.Second, "45s"},
+		{"Minutes only", 3 * time.Minute, "3m0s"},
+		{"Minutes and seconds", 3*time.Minute + 15*time.Second, "3m15s"},
+		{"Hours only", 2 * time.Hour, "2h0m0s"},
+		{"Hours and minutes", 2*time.Hour + 30*time.Minute, "2h30m0s"},
+		{"Days only", 48 * time.Hour, "48h0m0s"},
+		{"Days and hours", 50 * time.Hour, "50h0m0s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatUptime(tt.duration)
+			if result != tt.contains {
+				t.Errorf("formatUptime(%v) = %q, want %q", tt.duration, result, tt.contains)
+			}
+		})
+	}
+}
+
 // TestGetHealthStatusUseCase_Execute_ContextCancellation tests early context cancellation.
 func TestGetHealthStatusUseCase_Execute_ContextCancellation(t *testing.T) {
 	// Arrange

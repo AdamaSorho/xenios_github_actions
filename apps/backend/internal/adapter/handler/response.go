@@ -15,7 +15,7 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) error {
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {
-	respondJSON(w, status, ErrorResponse{Error: message})
+	_ = respondJSON(w, status, ErrorResponse{Error: message})
 }
 
 func respondErrorWithCode(w http.ResponseWriter, status int, message, code string, details map[string]interface{}) {

@@ -40,7 +40,7 @@ type HealthResponse struct {
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	// If use case is not set, return legacy response for backward compatibility
 	if h.useCase == nil {
-		respondJSON(w, http.StatusOK, HealthResponse{Status: "ok"})
+		_ = respondJSON(w, http.StatusOK, HealthResponse{Status: "ok"})
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// This should never happen as the use case uses graceful degradation,
 		// but handle it just in case
-		respondJSON(w, http.StatusOK, &entities.Health{
+		_ = respondJSON(w, http.StatusOK, &entities.Health{
 			Status: "degraded",
 			Checks: map[string]entities.HealthCheck{
 				"system": {Status: "down", LatencyMs: 0},
@@ -60,5 +60,5 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Always return HTTP 200, even when degraded
-	respondJSON(w, http.StatusOK, health)
+	_ = respondJSON(w, http.StatusOK, health)
 }

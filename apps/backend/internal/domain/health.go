@@ -19,7 +19,7 @@ const (
 )
 
 // HealthChecker is the domain interface for health checking.
-// Implementations in the infrastructure layer will check actual service dependencies.
+// Concrete implementations reside in outer layers and check actual service dependencies.
 type HealthChecker interface {
 	// Check performs health checks on service dependencies and returns the overall health status.
 	// Returns Health entity with status and individual dependency checks, or an error if the check fails.

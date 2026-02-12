@@ -149,8 +149,49 @@ func TestMigration000002_UpNoSQLInjection(t *testing.T) {
 
 	sql := string(content)
 
-	// Migration DDL should not contain string concatenation or variable interpolation
-	if strings.Contains(sql, "||") && !strings.Contains(sql, "--") {
-		t.Error("up migration should not contain string concatenation operators")
+	// Check for Go template syntax
+	unsafePatterns := []struct {
+		pattern string
+		desc    string
+	}{
+		{"${", "shell variable interpolation"},
+		{"%s", "Go fmt.Sprintf string interpolation"},
+		{"%v", "Go fmt.Sprintf value interpolation"},
+		{"{{", "Go template syntax"},
+	}
+
+	for _, p := range unsafePatterns {
+		if strings.Contains(sql, p.pattern) {
+			t.Errorf("up migration contains %s pattern (%s) — risk of SQL injection", p.pattern, p.desc)
+		}
+	}
+}
+
+// TestMigration000002_DownNoSQLInjection verifies the down migration does not use string interpolation.
+func TestMigration000002_DownNoSQLInjection(t *testing.T) {
+	dir := migrationsDir(t)
+	path := filepath.Join(dir, "000002_add_password_hash_to_users.down.sql")
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read down migration: %v", err)
+	}
+
+	sql := string(content)
+
+	unsafePatterns := []struct {
+		pattern string
+		desc    string
+	}{
+		{"${", "shell variable interpolation"},
+		{"%s", "Go fmt.Sprintf string interpolation"},
+		{"%v", "Go fmt.Sprintf value interpolation"},
+		{"{{", "Go template syntax"},
+	}
+
+	for _, p := range unsafePatterns {
+		if strings.Contains(sql, p.pattern) {
+			t.Errorf("down migration contains %s pattern (%s) — risk of SQL injection", p.pattern, p.desc)
+		}
 	}
 }

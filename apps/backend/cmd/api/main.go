@@ -9,10 +9,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xenios/backend/internal/adapter/handler"
+	"github.com/xenios/backend/internal/adapter/middleware"
 	"github.com/xenios/backend/internal/adapter/repository"
 	"github.com/xenios/backend/internal/domain/entities"
+	"github.com/xenios/backend/internal/infrastructure/config"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -25,17 +29,14 @@ func main() {
 	runServer(server)
 }
 
-// setupServer creates and configures the HTTP server.
-// Returns the server and a cleanup function to close resources.
+// setupServer creates and configures the HTTP server with Chi router,
+// middleware chain, and all route handlers.
 func setupServer() (*http.Server, func()) {
-	port := getPort()
+	cfg := config.Load()
 
-	// Set up health handler with optional database connectivity
 	healthHandler, pool, cleanup := setupHealthHandler()
+	router, jobWorker := configureRoutes(cfg, healthHandler, pool)
 
-	mux, jobWorker := configureRoutes(healthHandler, pool)
-
-	// Compose cleanup function
 	fullCleanup := func() {
 		if jobWorker != nil {
 			log.Println("Stopping job worker...")
@@ -46,39 +47,62 @@ func setupServer() (*http.Server, func()) {
 	}
 
 	return &http.Server{
-		Addr:         ":" + port,
-		Handler:      mux,
+		Addr:         ":" + cfg.Port,
+		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}, fullCleanup
 }
 
-// configureRoutes sets up the HTTP mux with all routes.
-// If pool is non-nil, job queue endpoints are registered.
-func configureRoutes(healthHandler *handler.HealthHandler, pool *pgxpool.Pool) (*http.ServeMux, *worker.Worker) {
-	versionHandler := handler.NewVersionHandler()
+// configureRoutes sets up the Chi router with middleware and all routes.
+func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, pool *pgxpool.Pool) (chi.Router, *worker.Worker) {
+	r := chi.NewRouter()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler.Health)
-	mux.HandleFunc("GET /version", versionHandler.Version)
+	// Middleware chain
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   cfg.CORSOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
+		ExposedHeaders:   []string{"X-Request-ID"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
-	// Set up job queue infrastructure if database is available
+	// Public routes
+	r.Get("/api/health", healthHandler.Health)
+	r.Get("/version", handler.NewVersionHandler().Version)
+
+	// Protected API routes with JWT auth and versioned prefix
 	var jobWorker *worker.Worker
-	if pool != nil {
-		queueHandler, w := setupJobQueue(pool)
-		jobWorker = w
-		mux.HandleFunc("POST /jobs", queueHandler.EnqueueJob)
-		mux.HandleFunc("GET /jobs/status", queueHandler.GetQueueStatus)
-	}
+	r.Route("/api/v1", func(api chi.Router) {
+		api.Use(middleware.JWTAuth(cfg.JWTSecret))
 
-	return mux, jobWorker
+		// Coach-client management endpoints
+		ccRepo := repository.NewInMemoryCoachClientRepository()
+		createUC := usecase.NewCreateCoachClientUseCase(ccRepo)
+		listUC := usecase.NewListCoachClientsUseCase(ccRepo)
+		ccHandler := handler.NewCoachClientHandler(createUC, listUC)
+
+		api.Post("/coaches/{coachID}/clients", ccHandler.Create)
+		api.Get("/coaches/{coachID}/clients", ccHandler.List)
+
+		// Job queue endpoints (if database is available)
+		if pool != nil {
+			queueHandler, w := setupJobQueue(pool)
+			jobWorker = w
+			api.Post("/jobs", queueHandler.EnqueueJob)
+			api.Get("/jobs/status", queueHandler.GetQueueStatus)
+		}
+	})
+
+	return r, jobWorker
 }
 
 // setupHealthHandler creates a health handler with optional database connectivity.
-// If DATABASE_URL is not set, returns a handler with no use case (legacy behavior).
-// If DATABASE_URL is set, wires up the full health checking infrastructure.
-// Returns the handler, the database pool (nil if no database), and a cleanup function.
 func setupHealthHandler() (*handler.HealthHandler, *pgxpool.Pool, func()) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -86,7 +110,6 @@ func setupHealthHandler() (*handler.HealthHandler, *pgxpool.Pool, func()) {
 		return handler.NewHealthHandler(), nil, func() {}
 	}
 
-	// Set up database connection pool
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -95,7 +118,6 @@ func setupHealthHandler() (*handler.HealthHandler, *pgxpool.Pool, func()) {
 		return handler.NewHealthHandler(), nil, func() {}
 	}
 
-	// Verify initial connection
 	if err := pool.Ping(ctx); err != nil {
 		log.Printf("Warning: failed to ping database: %v", err)
 		log.Println("Health check will not verify database connectivity")
@@ -107,16 +129,13 @@ func setupHealthHandler() (*handler.HealthHandler, *pgxpool.Pool, func()) {
 	return healthHandler, pool, cleanup
 }
 
-// wireHealthHandler sets up the health checking infrastructure with an established database pool.
-// This is separated from setupHealthHandler for testability.
+// wireHealthHandler sets up the health checking infrastructure.
 func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 	log.Println("Database connection pool established successfully")
 
-	// Wire up the health checking infrastructure (Clean Architecture)
 	healthChecker := repository.NewPostgresHealthChecker(pool, 3*time.Second)
 	healthUseCase := usecase.NewGetHealthStatusUseCase(healthChecker, startTime)
 
-	// Return handler and cleanup function to close the pool
 	cleanup := func() {
 		log.Println("Closing database connection pool...")
 		pool.Close()
@@ -128,21 +147,13 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
 func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
-	// Infrastructure layer: PostgreSQL-backed job queue
 	jobQueue := repository.NewPostgresJobQueue(pool)
-
-	// Application layer: use cases
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
-
-	// Presentation layer: HTTP handler
 	queueHandler := handler.NewQueueHandler(enqueueUC, statusUC)
 
-	// Worker infrastructure
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	// Register placeholder handlers for all job types.
-	// These will be replaced with real implementations as features are built.
 	allJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
@@ -158,7 +169,6 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		})
 	}
 
-	// Start worker
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
@@ -177,7 +187,6 @@ func getPort() string {
 
 // runServer starts the server and handles graceful shutdown
 func runServer(server *http.Server) {
-	// Graceful shutdown
 	go func() {
 		log.Printf("Server starting on port %s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

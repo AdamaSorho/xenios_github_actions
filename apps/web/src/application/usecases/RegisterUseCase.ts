@@ -1,8 +1,8 @@
 import { AuthResponse, RegisterInput } from '@/domain/entities/AuthUser'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
+import { isValidEmail } from '@/domain/valueObjects/Email'
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const VALID_ROLES = ['coach', 'client', 'admin']
+const VALID_ROLES = ['coach', 'client']
 
 export class RegisterUseCase {
   constructor(private readonly authRepo: AuthRepository) {}
@@ -11,7 +11,7 @@ export class RegisterUseCase {
     if (!input.email) {
       throw new Error('Email is required')
     }
-    if (!EMAIL_REGEX.test(input.email)) {
+    if (!isValidEmail(input.email)) {
       throw new Error('Invalid email format')
     }
     if (!input.password || input.password.length < 8) {
@@ -21,7 +21,7 @@ export class RegisterUseCase {
       throw new Error('Name is required')
     }
     if (!VALID_ROLES.includes(input.role)) {
-      throw new Error('Role must be one of: coach, client, admin')
+      throw new Error('Role must be one of: coach, client')
     }
 
     return this.authRepo.register(input)

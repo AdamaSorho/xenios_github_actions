@@ -106,7 +106,19 @@ describe('RegisterUseCase', () => {
         name: 'Test',
         role: 'invalid',
       })
-    ).rejects.toThrow('Role must be one of: coach, client, admin')
+    ).rejects.toThrow('Role must be one of: coach, client')
+    expect(mockAuthRepo.register).not.toHaveBeenCalled()
+  })
+
+  test('execute_AdminRole_ThrowsValidationError', async () => {
+    await expect(
+      useCase.execute({
+        email: 'coach@example.com',
+        password: 'Password123!',
+        name: 'Test',
+        role: 'admin',
+      })
+    ).rejects.toThrow('Role must be one of: coach, client')
     expect(mockAuthRepo.register).not.toHaveBeenCalled()
   })
 

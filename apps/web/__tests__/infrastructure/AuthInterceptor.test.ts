@@ -193,4 +193,145 @@ describe('AuthInterceptor', () => {
     expect(authRepo.refresh).toHaveBeenCalled()
     expect(result).toEqual({ ok: true, data: null, error: null })
   })
+
+  test('install_Concurrent401s_SharesSingleRefresh', async () => {
+    // Both GET calls return 401 initially, then succeed after refresh
+    mockGet
+      .mockResolvedValueOnce({ ok: false, data: null, error: 'Unauthorized' })
+      .mockResolvedValueOnce({ ok: false, data: null, error: 'Unauthorized' })
+      .mockResolvedValueOnce({ ok: true, data: { id: 1 }, error: null })
+      .mockResolvedValueOnce({ ok: true, data: { id: 2 }, error: null })
+
+    tokenStorage.getRefreshToken.mockReturnValue('refresh-token')
+    authRepo.refresh.mockResolvedValue({
+      access_token: 'new-at',
+      refresh_token: 'new-rt',
+    })
+
+    const interceptor = new AuthInterceptor(tokenStorage, authRepo, tokenManager)
+    interceptor.install()
+
+    const { apiClient } = require('@xenios/api-client')
+    const [result1, result2] = await Promise.all([
+      apiClient.get('/api/users'),
+      apiClient.get('/api/posts'),
+    ])
+
+    // Only one refresh call should have been made despite two 401s
+    expect(authRepo.refresh).toHaveBeenCalledTimes(1)
+    expect(result1).toEqual({ ok: true, data: { id: 1 }, error: null })
+    expect(result2).toEqual({ ok: true, data: { id: 2 }, error: null })
+  })
+
+  test('install_401Unauthorized_ExactMatch_TriggersRefresh', async () => {
+    mockGet
+      .mockResolvedValueOnce({ ok: false, data: null, error: '401 Unauthorized' })
+      .mockResolvedValueOnce({ ok: true, data: { id: 1 }, error: null })
+
+    tokenStorage.getRefreshToken.mockReturnValue('refresh-token')
+    authRepo.refresh.mockResolvedValue({
+      access_token: 'new-at',
+      refresh_token: 'new-rt',
+    })
+
+    const interceptor = new AuthInterceptor(tokenStorage, authRepo, tokenManager)
+    interceptor.install()
+
+    const { apiClient } = require('@xenios/api-client')
+    const result = await apiClient.get('/api/users')
+
+    expect(authRepo.refresh).toHaveBeenCalled()
+    expect(result).toEqual({ ok: true, data: { id: 1 }, error: null })
+  })
+
+  test('install_NonMatchingError_DoesNotTriggerRefresh', async () => {
+    mockGet.mockResolvedValue({
+      ok: false,
+      data: null,
+      error: 'something unauthorized happened',
+    })
+
+    const interceptor = new AuthInterceptor(tokenStorage, authRepo, tokenManager)
+    interceptor.install()
+
+    const { apiClient } = require('@xenios/api-client')
+    const result = await apiClient.get('/api/users')
+
+    expect(authRepo.refresh).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      ok: false,
+      data: null,
+      error: 'something unauthorized happened',
+    })
+  })
+})
+
+describe('AuthInterceptor.isAuthEndpoint', () => {
+  let interceptor: AuthInterceptor
+
+  beforeEach(() => {
+    resetApiClientMock()
+    interceptor = new AuthInterceptor(
+      createMockTokenStorage(),
+      createMockAuthRepo(),
+      createMockTokenManager()
+    )
+  })
+
+  test('exactAuthPaths_Match', () => {
+    expect(interceptor.isAuthEndpoint('/auth/login')).toBe(true)
+    expect(interceptor.isAuthEndpoint('/auth/register')).toBe(true)
+    expect(interceptor.isAuthEndpoint('/auth/refresh')).toBe(true)
+  })
+
+  test('nonAuthPaths_DoNotMatch', () => {
+    expect(interceptor.isAuthEndpoint('/api/users')).toBe(false)
+    expect(interceptor.isAuthEndpoint('/v1/auth/logout')).toBe(false)
+  })
+
+  test('substringPaths_DoNotMatch', () => {
+    expect(interceptor.isAuthEndpoint('/v2/auth/login-history')).toBe(false)
+    expect(interceptor.isAuthEndpoint('/auth/register-admin')).toBe(false)
+  })
+})
+
+describe('AuthInterceptor.isUnauthorized', () => {
+  let interceptor: AuthInterceptor
+
+  beforeEach(() => {
+    resetApiClientMock()
+    interceptor = new AuthInterceptor(
+      createMockTokenStorage(),
+      createMockAuthRepo(),
+      createMockTokenManager()
+    )
+  })
+
+  test('exactUnauthorized_Matches', () => {
+    expect(interceptor.isUnauthorized('Unauthorized')).toBe(true)
+    expect(interceptor.isUnauthorized('unauthorized')).toBe(true)
+    expect(interceptor.isUnauthorized('UNAUTHORIZED')).toBe(true)
+  })
+
+  test('exactTokenExpired_Matches', () => {
+    expect(interceptor.isUnauthorized('token expired')).toBe(true)
+    expect(interceptor.isUnauthorized('Token Expired')).toBe(true)
+  })
+
+  test('exact401_Matches', () => {
+    expect(interceptor.isUnauthorized('401')).toBe(true)
+    expect(interceptor.isUnauthorized('401 Unauthorized')).toBe(true)
+  })
+
+  test('substringMatch_DoesNotMatch', () => {
+    expect(interceptor.isUnauthorized('something unauthorized happened')).toBe(false)
+    expect(interceptor.isUnauthorized('user token expired due to inactivity')).toBe(false)
+    expect(interceptor.isUnauthorized('error 401 not found')).toBe(false)
+  })
+
+  test('otherErrors_DoNotMatch', () => {
+    expect(interceptor.isUnauthorized('Not found')).toBe(false)
+    expect(interceptor.isUnauthorized('Internal server error')).toBe(false)
+    expect(interceptor.isUnauthorized('Bad request')).toBe(false)
+  })
 })

@@ -22,7 +22,6 @@ const config = {
     '!src/infrastructure/container.ts',
     '!src/presentation/hooks/useUser.ts',
     '!src/infrastructure/repositories/ApiUserRepository.ts',
-    '!src/middleware.ts',
   ],
   coverageThreshold: {
     global: {

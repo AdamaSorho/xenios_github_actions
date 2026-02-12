@@ -1,7 +1,6 @@
 import { AuthResponse, LoginCredentials } from '@/domain/entities/AuthUser'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { isValidEmail } from '@/domain/valueObjects/Email'
 
 export class LoginUseCase {
   constructor(private readonly authRepo: AuthRepository) {}
@@ -10,7 +9,7 @@ export class LoginUseCase {
     if (!credentials.email) {
       throw new Error('Email is required')
     }
-    if (!EMAIL_REGEX.test(credentials.email)) {
+    if (!isValidEmail(credentials.email)) {
       throw new Error('Invalid email format')
     }
     if (!credentials.password) {

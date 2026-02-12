@@ -47,7 +47,7 @@ type Job struct {
 	CompletedAt *time.Time      `json:"completed_at,omitempty"`
 	FailedAt    *time.Time      `json:"failed_at,omitempty"`
 	RetryAfter  *time.Time      `json:"retry_after,omitempty"`
-	ErrorMsg    string          `json:"error_msg,omitempty"`
+	ErrorMsg    *string         `json:"error_msg,omitempty"`
 }
 
 // QueueStatus represents aggregate status counts for the job queue.

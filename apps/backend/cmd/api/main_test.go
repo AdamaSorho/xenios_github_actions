@@ -132,7 +132,7 @@ func TestSetupServer_HealthEndpoint(t *testing.T) {
 	// Start server in background
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			t.Logf("server error: %v", err)
 		}
 	}()
 
@@ -178,7 +178,7 @@ func TestSetupServer_VersionEndpoint(t *testing.T) {
 	// Start server
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			t.Logf("server error: %v", err)
 		}
 	}()
 
@@ -326,7 +326,7 @@ func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 	// Start server
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			t.Logf("server error: %v", err)
 		}
 	}()
 
@@ -498,7 +498,9 @@ func TestRunServer_GracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to find current process: %v", err)
 	}
-	proc.Signal(syscall.SIGINT)
+	if err := proc.Signal(syscall.SIGINT); err != nil {
+		t.Fatalf("failed to send signal: %v", err)
+	}
 
 	// Wait for server to shut down
 	select {
@@ -533,7 +535,7 @@ func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
 	// Start server
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			t.Logf("server error: %v", err)
 		}
 	}()
 

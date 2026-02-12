@@ -29,7 +29,7 @@ func (q *PostgresJobQueue) Enqueue(ctx context.Context, jobType entities.JobType
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var job entities.Job
 	var rawPayload []byte
@@ -87,7 +87,7 @@ func (q *PostgresJobQueue) Dequeue(ctx context.Context, jobTypes []entities.JobT
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var job entities.Job
 	var rawPayload []byte
@@ -148,7 +148,7 @@ func (q *PostgresJobQueue) Complete(ctx context.Context, jobID string) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	now := time.Now()
 	result, err := tx.Exec(ctx,
@@ -185,7 +185,7 @@ func (q *PostgresJobQueue) Fail(ctx context.Context, jobID string, errMsg string
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Fetch current job state
 	var job entities.Job

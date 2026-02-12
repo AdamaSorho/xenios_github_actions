@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -350,5 +351,114 @@ func TestQueueHandler_EnqueueJob_EmptyBody(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestQueueHandler_EnqueueJob_InfrastructureError_Returns500(t *testing.T) {
+	enqueueUC := &mockEnqueueJobUseCase{
+		executeFunc: func(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
+			return nil, errors.New("begin transaction: connection refused")
+		},
+	}
+	statusUC := &mockGetQueueStatusUseCase{}
+	h := NewQueueHandler(enqueueUC, statusUC)
+
+	body := `{"type":"transcription"}`
+	req := httptest.NewRequest(http.MethodPost, "/jobs", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	h.EnqueueJob(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error != "failed to enqueue job" {
+		t.Errorf("expected generic error message, got %q", response.Error)
+	}
+}
+
+func TestQueueHandler_EnqueueJob_InfrastructureError_DoesNotLeakDetails(t *testing.T) {
+	internalMsg := "insert job: pq: relation \"jobs\" does not exist"
+	enqueueUC := &mockEnqueueJobUseCase{
+		executeFunc: func(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
+			return nil, errors.New(internalMsg)
+		},
+	}
+	statusUC := &mockGetQueueStatusUseCase{}
+	h := NewQueueHandler(enqueueUC, statusUC)
+
+	body := `{"type":"transcription"}`
+	req := httptest.NewRequest(http.MethodPost, "/jobs", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	h.EnqueueJob(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+
+	// Verify internal error details are NOT leaked to the client
+	bodyStr := w.Body.String()
+	if strings.Contains(bodyStr, "pq:") || strings.Contains(bodyStr, "relation") {
+		t.Errorf("internal error details leaked to client: %s", bodyStr)
+	}
+}
+
+func TestQueueHandler_EnqueueJob_OversizedBody_Returns400(t *testing.T) {
+	enqueueUC := &mockEnqueueJobUseCase{}
+	statusUC := &mockGetQueueStatusUseCase{}
+	h := NewQueueHandler(enqueueUC, statusUC)
+
+	// Create a body larger than maxRequestBodySize (1MB)
+	largePayload := strings.Repeat("a", maxRequestBodySize+1)
+	body := `{"type":"transcription","payload":"` + largePayload + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/jobs", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	h.EnqueueJob(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error != "invalid request body" {
+		t.Errorf("expected error %q, got %q", "invalid request body", response.Error)
+	}
+}
+
+func TestQueueHandler_EnqueueJob_ValidationError_Returns400(t *testing.T) {
+	enqueueUC := &mockEnqueueJobUseCase{
+		executeFunc: func(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
+			return nil, errors.New(`invalid job type: "unknown_type"`)
+		},
+	}
+	statusUC := &mockGetQueueStatusUseCase{}
+	h := NewQueueHandler(enqueueUC, statusUC)
+
+	body := `{"type":"unknown_type"}`
+	req := httptest.NewRequest(http.MethodPost, "/jobs", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	h.EnqueueJob(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !strings.HasPrefix(response.Error, "invalid job type") {
+		t.Errorf("expected error starting with 'invalid job type', got %q", response.Error)
 	}
 }

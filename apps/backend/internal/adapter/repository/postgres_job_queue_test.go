@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"testing"
 
 	"github.com/xenios/backend/internal/domain/entities"
@@ -24,7 +25,7 @@ func TestPostgresJobQueue_DequeueEmptyTypes_ReturnsNil(t *testing.T) {
 	q := NewPostgresJobQueue(nil)
 
 	// Calling Dequeue with empty job types should return nil without hitting the database
-	job, err := q.Dequeue(nil, []entities.JobType{})
+	job, err := q.Dequeue(context.Background(), []entities.JobType{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

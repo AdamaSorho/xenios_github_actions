@@ -12,4 +12,5 @@ export interface AuthRepository {
   register(credentials: RegisterCredentials): Promise<AuthResponse>
   refreshToken(refreshToken: string): Promise<AuthTokens>
   logout(accessToken: string): Promise<void>
+  getCurrentUser(): Promise<AuthUser>
 }

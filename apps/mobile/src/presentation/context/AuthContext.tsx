@@ -43,9 +43,10 @@ export function AuthProvider({ deps, children }: AuthProviderProps) {
 
     async function checkAuth() {
       try {
+        await deps.authenticatedApiClient.configureAuth()
         const state = await deps.getAuthStateUseCase.execute()
-        if (mounted && state.isAuthenticated) {
-          await deps.authenticatedApiClient.configureAuth()
+        if (mounted && state.isAuthenticated && state.user) {
+          setUser(state.user)
         }
       } catch {
         // No stored auth state, user needs to login

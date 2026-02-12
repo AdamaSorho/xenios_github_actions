@@ -5,15 +5,9 @@ import {
 } from '@/domain/entities/AuthCredentials'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
+import { ValidationError } from '@/application/errors/ValidationError'
 
-export class ValidationError extends Error {
-  public readonly errors: string[]
-  constructor(errors: string[]) {
-    super(errors.join(', '))
-    this.name = 'ValidationError'
-    this.errors = errors
-  }
-}
+export { ValidationError }
 
 export interface RegisterOutput {
   user: AuthUser

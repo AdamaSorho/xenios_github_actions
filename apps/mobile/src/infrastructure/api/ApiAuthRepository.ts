@@ -76,15 +76,28 @@ export class ApiAuthRepository implements AuthRepository {
   }
 
   async logout(accessToken: string): Promise<void> {
-    const previousHeaders = { ...apiClient }
     apiClient.setAuthToken(accessToken)
-    try {
-      const response = await apiClient.post('/v1/auth/logout')
-      if (!response.ok) {
-        throw new Error(response.error || 'Logout failed')
-      }
-    } finally {
-      // Token will be managed by the auth context
+    const response = await apiClient.post('/auth/logout')
+    if (!response.ok) {
+      throw new Error(response.error || 'Logout failed')
+    }
+  }
+
+  async getCurrentUser(): Promise<AuthResponse['user']> {
+    const response = await apiClient.get<BackendAuthResponse['user']>('/auth/me')
+
+    if (!response.ok || !response.data) {
+      throw new Error(response.error || 'Failed to get current user')
+    }
+
+    return {
+      id: response.data.id,
+      email: response.data.email,
+      name: response.data.name,
+      role: response.data.role as AuthResponse['user']['role'],
+      avatarUrl: response.data.avatar_url,
+      createdAt: response.data.created_at,
+      updatedAt: response.data.updated_at,
     }
   }
 

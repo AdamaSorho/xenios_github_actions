@@ -30,7 +30,7 @@ function createMockDeps(): AuthProviderDeps {
       execute: jest.fn(),
     } as unknown as LogoutUseCase,
     getAuthStateUseCase: {
-      execute: jest.fn().mockResolvedValue({ isAuthenticated: false, accessToken: null }),
+      execute: jest.fn().mockResolvedValue({ isAuthenticated: false, accessToken: null, user: null }),
     } as unknown as GetAuthStateUseCase,
     authenticatedApiClient: {
       configureAuth: jest.fn(),
@@ -96,17 +96,23 @@ describe('AuthContext', () => {
     expect(getByTestId('user-name').props.children).toBe('none')
   })
 
-  it('should configure auth when stored tokens exist on mount', async () => {
+  it('should restore user and configure auth when stored tokens exist on mount', async () => {
     const deps = createMockDeps()
     ;(deps.getAuthStateUseCase.execute as jest.Mock).mockResolvedValue({
       isAuthenticated: true,
       accessToken: 'stored-token',
+      user: mockUser,
     })
 
-    renderWithAuth(deps)
+    const { getByTestId } = renderWithAuth(deps)
 
     await waitFor(() => {
       expect(deps.authenticatedApiClient.configureAuth).toHaveBeenCalled()
+    })
+
+    await waitFor(() => {
+      expect(getByTestId('authenticated').props.children).toBe('true')
+      expect(getByTestId('user-name').props.children).toBe('Test User')
     })
   })
 
@@ -116,10 +122,11 @@ describe('AuthContext', () => {
       user: mockUser,
     })
     ;(deps.getAuthStateUseCase.execute as jest.Mock)
-      .mockResolvedValueOnce({ isAuthenticated: false, accessToken: null })
+      .mockResolvedValueOnce({ isAuthenticated: false, accessToken: null, user: null })
       .mockResolvedValueOnce({
         isAuthenticated: true,
         accessToken: 'new-token',
+        user: null,
       })
 
     const { getByTestId } = renderWithAuth(deps)
@@ -165,10 +172,11 @@ describe('AuthContext', () => {
       user: mockUser,
     })
     ;(deps.getAuthStateUseCase.execute as jest.Mock)
-      .mockResolvedValueOnce({ isAuthenticated: false, accessToken: null })
+      .mockResolvedValueOnce({ isAuthenticated: false, accessToken: null, user: null })
       .mockResolvedValueOnce({
         isAuthenticated: true,
         accessToken: 'new-token',
+        user: null,
       })
 
     const { getByTestId } = renderWithAuth(deps)
@@ -193,10 +201,11 @@ describe('AuthContext', () => {
     })
     ;(deps.logoutUseCase.execute as jest.Mock).mockResolvedValue(undefined)
     ;(deps.getAuthStateUseCase.execute as jest.Mock)
-      .mockResolvedValueOnce({ isAuthenticated: false, accessToken: null })
+      .mockResolvedValueOnce({ isAuthenticated: false, accessToken: null, user: null })
       .mockResolvedValueOnce({
         isAuthenticated: true,
         accessToken: 'token',
+        user: null,
       })
 
     const { getByTestId } = renderWithAuth(deps)

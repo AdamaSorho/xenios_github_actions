@@ -15,7 +15,6 @@ import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { RefreshTokenUseCase } from '@/application/usecases/RefreshTokenUseCase'
 import { GetAuthStateUseCase } from '@/application/usecases/GetAuthStateUseCase'
-import { AuthProviderDeps } from '@/presentation/context/AuthContext'
 
 // Infrastructure: Repositories
 const userRepository = new ApiUserRepository()
@@ -38,10 +37,13 @@ export const refreshTokenUseCase = new RefreshTokenUseCase(
   authRepository,
   tokenStorage
 )
-export const getAuthStateUseCase = new GetAuthStateUseCase(tokenStorage)
+export const getAuthStateUseCase = new GetAuthStateUseCase(
+  tokenStorage,
+  authRepository
+)
 
 // Auth provider dependencies bundle
-export const authProviderDeps: AuthProviderDeps = {
+export const authProviderDeps = {
   loginUseCase,
   registerUseCase,
   logoutUseCase,

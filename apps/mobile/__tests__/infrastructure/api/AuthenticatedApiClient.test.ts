@@ -27,6 +27,7 @@ function createMockAuthRepo(): jest.Mocked<AuthRepository> {
     register: jest.fn(),
     refreshToken: jest.fn(),
     logout: jest.fn(),
+    getCurrentUser: jest.fn(),
   }
 }
 

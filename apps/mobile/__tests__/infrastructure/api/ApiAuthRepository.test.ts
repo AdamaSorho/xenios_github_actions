@@ -4,6 +4,7 @@ import { apiClient } from '@xenios/api-client'
 jest.mock('@xenios/api-client', () => ({
   apiClient: {
     post: jest.fn(),
+    get: jest.fn(),
     setAuthToken: jest.fn(),
     clearAuthToken: jest.fn(),
   },
@@ -177,7 +178,7 @@ describe('ApiAuthRepository', () => {
       await repo.logout('access-token')
 
       expect(mockApiClient.setAuthToken).toHaveBeenCalledWith('access-token')
-      expect(mockApiClient.post).toHaveBeenCalledWith('/v1/auth/logout')
+      expect(mockApiClient.post).toHaveBeenCalledWith('/auth/logout')
     })
 
     it('should throw on logout failure', async () => {
@@ -188,6 +189,55 @@ describe('ApiAuthRepository', () => {
       })
 
       await expect(repo.logout('bad-token')).rejects.toThrow('Unauthorized')
+    })
+  })
+
+  describe('getCurrentUser', () => {
+    it('should fetch current user successfully', async () => {
+      mockApiClient.get.mockResolvedValue({
+        ok: true,
+        data: {
+          id: 'user-1',
+          email: 'test@example.com',
+          name: 'Test User',
+          role: 'coach',
+          avatar_url: 'https://example.com/avatar.png',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        error: null,
+      })
+
+      const user = await repo.getCurrentUser()
+
+      expect(user.id).toBe('user-1')
+      expect(user.email).toBe('test@example.com')
+      expect(user.name).toBe('Test User')
+      expect(user.role).toBe('coach')
+      expect(user.avatarUrl).toBe('https://example.com/avatar.png')
+      expect(mockApiClient.get).toHaveBeenCalledWith('/auth/me')
+    })
+
+    it('should throw on getCurrentUser failure', async () => {
+      mockApiClient.get.mockResolvedValue({
+        ok: false,
+        data: null,
+        error: 'Unauthorized',
+      })
+
+      await expect(repo.getCurrentUser()).rejects.toThrow('Unauthorized')
+    })
+
+    it('should throw default message when no error returned', async () => {
+      mockApiClient.get.mockResolvedValue({
+        ok: false,
+        data: null,
+        error: null,
+      })
+
+      await expect(repo.getCurrentUser()).rejects.toThrow(
+        'Failed to get current user'
+      )
     })
   })
 })

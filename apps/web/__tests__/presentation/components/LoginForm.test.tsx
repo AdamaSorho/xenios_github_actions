@@ -8,40 +8,17 @@ import { AuthTokenManager } from '@/domain/repositories/AuthTokenManager'
 import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
+import {
+  createMockAuthRepo,
+  createMockTokenStorage,
+  createMockTokenManager,
+} from '../../helpers/mockFactories'
 
 // Mock next/navigation
 const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refresh: jest.fn(),
-    logout: jest.fn(),
-  }
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorage> {
-  return {
-    getAccessToken: jest.fn().mockReturnValue(null),
-    getRefreshToken: jest.fn().mockReturnValue(null),
-    setTokens: jest.fn(),
-    clearTokens: jest.fn(),
-    getUser: jest.fn().mockReturnValue(null),
-    setUser: jest.fn(),
-  }
-}
-
-function createMockTokenManager(): jest.Mocked<AuthTokenManager> {
-  return {
-    setAuthToken: jest.fn(),
-    clearAuthToken: jest.fn(),
-    restoreToken: jest.fn(),
-  }
-}
 
 function renderLoginForm(
   authRepo: jest.Mocked<AuthRepository> = createMockAuthRepo(),

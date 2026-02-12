@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ErrorBoundary } from '@/presentation/components/ErrorBoundary'
 

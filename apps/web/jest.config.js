@@ -23,6 +23,7 @@ const config = {
     '!src/presentation/hooks/useUser.ts',
     '!src/infrastructure/repositories/ApiUserRepository.ts',
   ],
+  coverageReporters: ['text', 'lcov', 'json-summary'],
   coverageThreshold: {
     global: {
       branches: 80,

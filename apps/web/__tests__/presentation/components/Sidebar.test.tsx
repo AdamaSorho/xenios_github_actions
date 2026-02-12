@@ -3,11 +3,14 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/presentation/components/Sidebar'
 import { AuthProvider } from '@/presentation/hooks/useAuth'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
-import { TokenStorage } from '@/domain/repositories/TokenStorage'
-import { AuthTokenManager } from '@/domain/repositories/AuthTokenManager'
 import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
+import {
+  createMockAuthRepo,
+  createMockTokenStorage,
+  createMockTokenManager,
+} from '../../helpers/mockFactories'
 
 // Mock next/navigation
 let mockPathname = '/dashboard'
@@ -33,34 +36,6 @@ jest.mock('next/link', () => {
     )
   }
 })
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refresh: jest.fn(),
-    logout: jest.fn().mockResolvedValue(undefined),
-  }
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorage> {
-  return {
-    getAccessToken: jest.fn().mockReturnValue(null),
-    getRefreshToken: jest.fn().mockReturnValue(null),
-    setTokens: jest.fn(),
-    clearTokens: jest.fn(),
-    getUser: jest.fn().mockReturnValue(null),
-    setUser: jest.fn(),
-  }
-}
-
-function createMockTokenManager(): jest.Mocked<AuthTokenManager> {
-  return {
-    setAuthToken: jest.fn(),
-    clearAuthToken: jest.fn(),
-    restoreToken: jest.fn(),
-  }
-}
 
 function renderSidebar(
   authRepo?: jest.Mocked<AuthRepository>,

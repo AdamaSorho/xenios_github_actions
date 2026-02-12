@@ -7,34 +7,11 @@ import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refresh: jest.fn(),
-    logout: jest.fn(),
-  }
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorage> {
-  return {
-    getAccessToken: jest.fn().mockReturnValue(null),
-    getRefreshToken: jest.fn().mockReturnValue(null),
-    setTokens: jest.fn(),
-    clearTokens: jest.fn(),
-    getUser: jest.fn().mockReturnValue(null),
-    setUser: jest.fn(),
-  }
-}
-
-function createMockTokenManager(): jest.Mocked<AuthTokenManager> {
-  return {
-    setAuthToken: jest.fn(),
-    clearAuthToken: jest.fn(),
-    restoreToken: jest.fn(),
-  }
-}
+import {
+  createMockAuthRepo,
+  createMockTokenStorage,
+  createMockTokenManager,
+} from '../../helpers/mockFactories'
 
 function createWrapper(
   mockAuthRepo: jest.Mocked<AuthRepository>,

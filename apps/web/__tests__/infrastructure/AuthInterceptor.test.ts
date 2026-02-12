@@ -2,6 +2,11 @@ import { AuthInterceptor } from '@/infrastructure/auth/AuthInterceptor'
 import { TokenStorage } from '@/domain/repositories/TokenStorage'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { AuthTokenManager } from '@/domain/repositories/AuthTokenManager'
+import {
+  createMockAuthRepo,
+  createMockTokenStorage,
+  createMockTokenManager,
+} from '../helpers/mockFactories'
 
 // Mock apiClient with controllable methods
 const mockGet = jest.fn()
@@ -28,34 +33,6 @@ jest.mock('@xenios/api-client', () => ({
     clearAuthToken: jest.fn(),
   },
 }))
-
-function createMockTokenStorage(): jest.Mocked<TokenStorage> {
-  return {
-    getAccessToken: jest.fn(),
-    getRefreshToken: jest.fn(),
-    setTokens: jest.fn(),
-    clearTokens: jest.fn(),
-    getUser: jest.fn(),
-    setUser: jest.fn(),
-  }
-}
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refresh: jest.fn(),
-    logout: jest.fn(),
-  }
-}
-
-function createMockTokenManager(): jest.Mocked<AuthTokenManager> {
-  return {
-    setAuthToken: jest.fn(),
-    clearAuthToken: jest.fn(),
-    restoreToken: jest.fn(),
-  }
-}
 
 describe('AuthInterceptor', () => {
   let tokenStorage: jest.Mocked<TokenStorage>

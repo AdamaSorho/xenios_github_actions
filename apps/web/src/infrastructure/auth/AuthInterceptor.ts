@@ -48,25 +48,23 @@ export class AuthInterceptor {
   ]
 
   install(): void {
-    const self = this
-
-    apiClient.get = async function <T>(path: string) {
-      return self.withRefresh<T>(() => self.originalGet<T>(path))
+    apiClient.get = <T>(path: string) => {
+      return this.withRefresh<T>(() => this.originalGet<T>(path))
     }
 
-    apiClient.post = async function <T>(path: string, body?: unknown) {
-      if (self.isAuthEndpoint(path)) {
-        return self.originalPost<T>(path, body)
+    apiClient.post = <T>(path: string, body?: unknown) => {
+      if (this.isAuthEndpoint(path)) {
+        return this.originalPost<T>(path, body)
       }
-      return self.withRefresh<T>(() => self.originalPost<T>(path, body))
+      return this.withRefresh<T>(() => this.originalPost<T>(path, body))
     }
 
-    apiClient.put = async function <T>(path: string, body?: unknown) {
-      return self.withRefresh<T>(() => self.originalPut<T>(path, body))
+    apiClient.put = <T>(path: string, body?: unknown) => {
+      return this.withRefresh<T>(() => this.originalPut<T>(path, body))
     }
 
-    apiClient.delete = async function <T>(path: string) {
-      return self.withRefresh<T>(() => self.originalDelete<T>(path))
+    apiClient.delete = <T>(path: string) => {
+      return this.withRefresh<T>(() => this.originalDelete<T>(path))
     }
   }
 

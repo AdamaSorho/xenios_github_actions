@@ -16,6 +16,7 @@ import (
 	"github.com/xenios/backend/internal/adapter/middleware"
 	"github.com/xenios/backend/internal/adapter/repository"
 	"github.com/xenios/backend/internal/domain/entities"
+	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
@@ -76,10 +77,19 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 	r.Get("/api/health", healthHandler.Health)
 	r.Get("/version", handler.NewVersionHandler().Version)
 
+	// Auth routes (public — no JWT required)
+	authHandler := setupAuthHandler(cfg)
+	r.Post("/api/auth/register", authHandler.Register)
+	r.Post("/api/auth/login", authHandler.Login)
+	r.Post("/api/auth/refresh", authHandler.Refresh)
+
 	// Protected API routes with JWT auth and versioned prefix
 	var jobWorker *worker.Worker
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(middleware.JWTAuth(cfg.JWTSecret))
+
+		// Auth logout (requires valid JWT)
+		api.Post("/auth/logout", authHandler.Logout)
 
 		// Coach-client management endpoints
 		ccRepo := repository.NewInMemoryCoachClientRepository()
@@ -100,6 +110,27 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 	})
 
 	return r, jobWorker
+}
+
+// setupAuthHandler wires up auth dependencies and returns the handler.
+func setupAuthHandler(cfg *config.Config) *handler.AuthHandler {
+	userRepo := repository.NewInMemoryUserRepository()
+	tokenRepo := repository.NewInMemoryRefreshTokenRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+
+	jwtSecret := cfg.JWTSecret
+	if jwtSecret == "" {
+		jwtSecret = "dev-secret-do-not-use-in-production"
+	}
+	tokenService := auth.NewJWTTokenService(jwtSecret, 15*time.Minute)
+	hasher := auth.NewBcryptHasher(12)
+
+	registerUC := usecase.NewRegisterUserUseCase(userRepo, tokenRepo, tokenService, auditRepo, hasher)
+	loginUC := usecase.NewLoginUserUseCase(userRepo, tokenRepo, tokenService, auditRepo, hasher)
+	refreshUC := usecase.NewRefreshTokenUseCase(userRepo, tokenRepo, tokenService, auditRepo)
+	logoutUC := usecase.NewLogoutUserUseCase(tokenRepo, auditRepo)
+
+	return handler.NewAuthHandler(registerUC, loginUC, refreshUC, logoutUC)
 }
 
 // setupHealthHandler creates a health handler with optional database connectivity.

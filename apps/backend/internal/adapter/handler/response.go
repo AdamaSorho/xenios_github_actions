@@ -15,7 +15,7 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) error {
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {
-	respondJSON(w, status, ErrorResponse{Error: message})
+	_ = respondJSON(w, status, ErrorResponse{Error: message})
 }
 
 // ErrorResponse is the JSON response format for errors.

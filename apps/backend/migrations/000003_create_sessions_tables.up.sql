@@ -24,6 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_deleted_at ON sessions(deleted_at);
 
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions;
 CREATE TRIGGER update_sessions_updated_at
     BEFORE UPDATE ON sessions
     FOR EACH ROW
@@ -65,6 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_workout_exercises_session_id ON workout_exercises
 
 ALTER TABLE workout_exercises ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_workout_exercises_updated_at ON workout_exercises;
 CREATE TRIGGER update_workout_exercises_updated_at
     BEFORE UPDATE ON workout_exercises
     FOR EACH ROW

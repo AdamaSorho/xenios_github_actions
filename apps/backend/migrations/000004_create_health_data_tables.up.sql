@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS measurements (
 );
 
 CREATE INDEX IF NOT EXISTS idx_measurements_client_id ON measurements(client_id);
+CREATE INDEX IF NOT EXISTS idx_measurements_recorded_by ON measurements(recorded_by);
 CREATE INDEX IF NOT EXISTS idx_measurements_type ON measurements(measurement_type);
 CREATE INDEX IF NOT EXISTS idx_measurements_measured_at ON measurements(measured_at);
 
@@ -62,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_insight_cards_status ON insight_cards(status);
 
 ALTER TABLE insight_cards ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_insight_cards_updated_at ON insight_cards;
 CREATE TRIGGER update_insight_cards_updated_at
     BEFORE UPDATE ON insight_cards
     FOR EACH ROW

@@ -29,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Apply updated_at trigger
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW

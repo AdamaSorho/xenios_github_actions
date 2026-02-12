@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS exercise_library (
     difficulty TEXT NOT NULL DEFAULT 'intermediate' CHECK (difficulty IN ('beginner', 'intermediate', 'advanced')),
     video_url TEXT,
     instructions TEXT,
-    created_by UUID REFERENCES users(id),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     is_global BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_exercise_library_is_global ON exercise_library(is
 
 ALTER TABLE exercise_library ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_exercise_library_updated_at ON exercise_library;
 CREATE TRIGGER update_exercise_library_updated_at
     BEFORE UPDATE ON exercise_library
     FOR EACH ROW
@@ -46,6 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_programs_status ON programs(status);
 
 ALTER TABLE programs ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_programs_updated_at ON programs;
 CREATE TRIGGER update_programs_updated_at
     BEFORE UPDATE ON programs
     FOR EACH ROW
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS program_versions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_program_versions_program_id ON program_versions(program_id);
+CREATE INDEX IF NOT EXISTS idx_program_versions_created_by ON program_versions(created_by);
 
 ALTER TABLE program_versions ENABLE ROW LEVEL SECURITY;
 
@@ -83,6 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_phases_program_id ON phases(program_id);
 
 ALTER TABLE phases ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_phases_updated_at ON phases;
 CREATE TRIGGER update_phases_updated_at
     BEFORE UPDATE ON phases
     FOR EACH ROW
@@ -104,6 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_microcycles_phase_id ON microcycles(phase_id);
 
 ALTER TABLE microcycles ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_microcycles_updated_at ON microcycles;
 CREATE TRIGGER update_microcycles_updated_at
     BEFORE UPDATE ON microcycles
     FOR EACH ROW
@@ -127,6 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_programmed_sessions_microcycle_id ON programmed_s
 
 ALTER TABLE programmed_sessions ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_programmed_sessions_updated_at ON programmed_sessions;
 CREATE TRIGGER update_programmed_sessions_updated_at
     BEFORE UPDATE ON programmed_sessions
     FOR EACH ROW
@@ -155,6 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_programmed_exercises_exercise_id ON programmed_ex
 
 ALTER TABLE programmed_exercises ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_programmed_exercises_updated_at ON programmed_exercises;
 CREATE TRIGGER update_programmed_exercises_updated_at
     BEFORE UPDATE ON programmed_exercises
     FOR EACH ROW
@@ -175,6 +182,7 @@ CREATE TABLE IF NOT EXISTS session_completions (
 
 CREATE INDEX IF NOT EXISTS idx_session_completions_client_id ON session_completions(client_id);
 CREATE INDEX IF NOT EXISTS idx_session_completions_programmed_session_id ON session_completions(programmed_session_id);
+CREATE INDEX IF NOT EXISTS idx_session_completions_session_id ON session_completions(session_id);
 
 ALTER TABLE session_completions ENABLE ROW LEVEL SECURITY;
 
@@ -220,6 +228,7 @@ CREATE INDEX IF NOT EXISTS idx_behavior_goals_status ON behavior_goals(status);
 
 ALTER TABLE behavior_goals ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_behavior_goals_updated_at ON behavior_goals;
 CREATE TRIGGER update_behavior_goals_updated_at
     BEFORE UPDATE ON behavior_goals
     FOR EACH ROW
@@ -240,6 +249,7 @@ CREATE INDEX IF NOT EXISTS idx_behavior_cues_goal_id ON behavior_cues(behavior_g
 
 ALTER TABLE behavior_cues ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_behavior_cues_updated_at ON behavior_cues;
 CREATE TRIGGER update_behavior_cues_updated_at
     BEFORE UPDATE ON behavior_cues
     FOR EACH ROW

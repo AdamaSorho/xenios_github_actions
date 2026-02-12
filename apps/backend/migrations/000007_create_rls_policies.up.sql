@@ -29,11 +29,13 @@ $$ LANGUAGE plpgsql STABLE;
 -- USERS
 -- ============================================================
 -- Users can see their own record
+DROP POLICY IF EXISTS users_self_access ON users;
 CREATE POLICY users_self_access ON users
     FOR ALL
     USING (id = current_app_user_id());
 
 -- Coaches can see their clients' user records
+DROP POLICY IF EXISTS users_coach_access ON users;
 CREATE POLICY users_coach_access ON users
     FOR SELECT
     USING (is_coach_of(id));
@@ -41,6 +43,7 @@ CREATE POLICY users_coach_access ON users
 -- ============================================================
 -- COACH PROFILES
 -- ============================================================
+DROP POLICY IF EXISTS coach_profiles_self_access ON coach_profiles;
 CREATE POLICY coach_profiles_self_access ON coach_profiles
     FOR ALL
     USING (user_id = current_app_user_id());
@@ -48,10 +51,12 @@ CREATE POLICY coach_profiles_self_access ON coach_profiles
 -- ============================================================
 -- CLIENT PROFILES
 -- ============================================================
+DROP POLICY IF EXISTS client_profiles_self_access ON client_profiles;
 CREATE POLICY client_profiles_self_access ON client_profiles
     FOR ALL
     USING (user_id = current_app_user_id());
 
+DROP POLICY IF EXISTS client_profiles_coach_access ON client_profiles;
 CREATE POLICY client_profiles_coach_access ON client_profiles
     FOR SELECT
     USING (is_coach_of(user_id));
@@ -59,10 +64,12 @@ CREATE POLICY client_profiles_coach_access ON client_profiles
 -- ============================================================
 -- COACH CLIENT RELATIONSHIPS
 -- ============================================================
+DROP POLICY IF EXISTS ccr_coach_access ON coach_client_relationships;
 CREATE POLICY ccr_coach_access ON coach_client_relationships
     FOR ALL
     USING (coach_id = current_app_user_id());
 
+DROP POLICY IF EXISTS ccr_client_access ON coach_client_relationships;
 CREATE POLICY ccr_client_access ON coach_client_relationships
     FOR SELECT
     USING (client_id = current_app_user_id());
@@ -70,10 +77,12 @@ CREATE POLICY ccr_client_access ON coach_client_relationships
 -- ============================================================
 -- SESSIONS
 -- ============================================================
+DROP POLICY IF EXISTS sessions_coach_access ON sessions;
 CREATE POLICY sessions_coach_access ON sessions
     FOR ALL
     USING (coach_id = current_app_user_id());
 
+DROP POLICY IF EXISTS sessions_client_access ON sessions;
 CREATE POLICY sessions_client_access ON sessions
     FOR SELECT
     USING (client_id = current_app_user_id());
@@ -81,6 +90,7 @@ CREATE POLICY sessions_client_access ON sessions
 -- ============================================================
 -- TRANSCRIPT SEGMENTS
 -- ============================================================
+DROP POLICY IF EXISTS transcript_segments_access ON transcript_segments;
 CREATE POLICY transcript_segments_access ON transcript_segments
     FOR ALL
     USING (
@@ -94,6 +104,7 @@ CREATE POLICY transcript_segments_access ON transcript_segments
 -- ============================================================
 -- WORKOUT EXERCISES
 -- ============================================================
+DROP POLICY IF EXISTS workout_exercises_access ON workout_exercises;
 CREATE POLICY workout_exercises_access ON workout_exercises
     FOR ALL
     USING (
@@ -107,6 +118,7 @@ CREATE POLICY workout_exercises_access ON workout_exercises
 -- ============================================================
 -- FORM CUES TRACKING
 -- ============================================================
+DROP POLICY IF EXISTS form_cues_tracking_access ON form_cues_tracking;
 CREATE POLICY form_cues_tracking_access ON form_cues_tracking
     FOR ALL
     USING (
@@ -121,10 +133,12 @@ CREATE POLICY form_cues_tracking_access ON form_cues_tracking
 -- ============================================================
 -- ARTIFACTS
 -- ============================================================
+DROP POLICY IF EXISTS artifacts_client_access ON artifacts;
 CREATE POLICY artifacts_client_access ON artifacts
     FOR ALL
     USING (client_id = current_app_user_id());
 
+DROP POLICY IF EXISTS artifacts_coach_access ON artifacts;
 CREATE POLICY artifacts_coach_access ON artifacts
     FOR ALL
     USING (is_coach_of(client_id));
@@ -132,10 +146,12 @@ CREATE POLICY artifacts_coach_access ON artifacts
 -- ============================================================
 -- MEASUREMENTS
 -- ============================================================
+DROP POLICY IF EXISTS measurements_client_access ON measurements;
 CREATE POLICY measurements_client_access ON measurements
     FOR ALL
     USING (client_id = current_app_user_id());
 
+DROP POLICY IF EXISTS measurements_coach_access ON measurements;
 CREATE POLICY measurements_coach_access ON measurements
     FOR ALL
     USING (is_coach_of(client_id));
@@ -143,10 +159,12 @@ CREATE POLICY measurements_coach_access ON measurements
 -- ============================================================
 -- INSIGHT CARDS
 -- ============================================================
+DROP POLICY IF EXISTS insight_cards_coach_access ON insight_cards;
 CREATE POLICY insight_cards_coach_access ON insight_cards
     FOR ALL
     USING (coach_id = current_app_user_id());
 
+DROP POLICY IF EXISTS insight_cards_client_access ON insight_cards;
 CREATE POLICY insight_cards_client_access ON insight_cards
     FOR SELECT
     USING (client_id = current_app_user_id() AND status IN ('approved', 'shared'));
@@ -154,10 +172,12 @@ CREATE POLICY insight_cards_client_access ON insight_cards
 -- ============================================================
 -- WEARABLE SUMMARIES
 -- ============================================================
+DROP POLICY IF EXISTS wearable_summaries_client_access ON wearable_summaries;
 CREATE POLICY wearable_summaries_client_access ON wearable_summaries
     FOR ALL
     USING (client_id = current_app_user_id());
 
+DROP POLICY IF EXISTS wearable_summaries_coach_access ON wearable_summaries;
 CREATE POLICY wearable_summaries_coach_access ON wearable_summaries
     FOR SELECT
     USING (is_coach_of(client_id));
@@ -165,10 +185,12 @@ CREATE POLICY wearable_summaries_coach_access ON wearable_summaries
 -- ============================================================
 -- COACHING ANALYTICS
 -- ============================================================
+DROP POLICY IF EXISTS coaching_analytics_coach_access ON coaching_analytics;
 CREATE POLICY coaching_analytics_coach_access ON coaching_analytics
     FOR ALL
     USING (coach_id = current_app_user_id());
 
+DROP POLICY IF EXISTS coaching_analytics_client_access ON coaching_analytics;
 CREATE POLICY coaching_analytics_client_access ON coaching_analytics
     FOR SELECT
     USING (client_id = current_app_user_id());
@@ -176,6 +198,7 @@ CREATE POLICY coaching_analytics_client_access ON coaching_analytics
 -- ============================================================
 -- CLIENT RISK SCORES
 -- ============================================================
+DROP POLICY IF EXISTS client_risk_scores_coach_access ON client_risk_scores;
 CREATE POLICY client_risk_scores_coach_access ON client_risk_scores
     FOR ALL
     USING (coach_id = current_app_user_id());
@@ -184,11 +207,13 @@ CREATE POLICY client_risk_scores_coach_access ON client_risk_scores
 -- EVENTS AUDIT
 -- ============================================================
 -- Actors can see their own audit events
+DROP POLICY IF EXISTS events_audit_self_access ON events_audit;
 CREATE POLICY events_audit_self_access ON events_audit
     FOR SELECT
     USING (actor_id = current_app_user_id());
 
 -- Insert is allowed for any authenticated user
+DROP POLICY IF EXISTS events_audit_insert ON events_audit;
 CREATE POLICY events_audit_insert ON events_audit
     FOR INSERT
     WITH CHECK (actor_id = current_app_user_id());
@@ -197,11 +222,13 @@ CREATE POLICY events_audit_insert ON events_audit
 -- EXERCISE LIBRARY
 -- ============================================================
 -- Global exercises visible to all authenticated users
+DROP POLICY IF EXISTS exercise_library_global_access ON exercise_library;
 CREATE POLICY exercise_library_global_access ON exercise_library
     FOR SELECT
     USING (is_global = TRUE);
 
 -- Users can manage their own exercises
+DROP POLICY IF EXISTS exercise_library_owner_access ON exercise_library;
 CREATE POLICY exercise_library_owner_access ON exercise_library
     FOR ALL
     USING (created_by = current_app_user_id());
@@ -209,10 +236,12 @@ CREATE POLICY exercise_library_owner_access ON exercise_library
 -- ============================================================
 -- PROGRAMS
 -- ============================================================
+DROP POLICY IF EXISTS programs_coach_access ON programs;
 CREATE POLICY programs_coach_access ON programs
     FOR ALL
     USING (coach_id = current_app_user_id());
 
+DROP POLICY IF EXISTS programs_client_access ON programs;
 CREATE POLICY programs_client_access ON programs
     FOR SELECT
     USING (client_id = current_app_user_id());
@@ -220,6 +249,7 @@ CREATE POLICY programs_client_access ON programs
 -- ============================================================
 -- PROGRAM VERSIONS
 -- ============================================================
+DROP POLICY IF EXISTS program_versions_access ON program_versions;
 CREATE POLICY program_versions_access ON program_versions
     FOR ALL
     USING (
@@ -233,6 +263,7 @@ CREATE POLICY program_versions_access ON program_versions
 -- ============================================================
 -- PHASES
 -- ============================================================
+DROP POLICY IF EXISTS phases_access ON phases;
 CREATE POLICY phases_access ON phases
     FOR ALL
     USING (
@@ -246,6 +277,7 @@ CREATE POLICY phases_access ON phases
 -- ============================================================
 -- MICROCYCLES
 -- ============================================================
+DROP POLICY IF EXISTS microcycles_access ON microcycles;
 CREATE POLICY microcycles_access ON microcycles
     FOR ALL
     USING (
@@ -260,6 +292,7 @@ CREATE POLICY microcycles_access ON microcycles
 -- ============================================================
 -- PROGRAMMED SESSIONS
 -- ============================================================
+DROP POLICY IF EXISTS programmed_sessions_access ON programmed_sessions;
 CREATE POLICY programmed_sessions_access ON programmed_sessions
     FOR ALL
     USING (
@@ -275,6 +308,7 @@ CREATE POLICY programmed_sessions_access ON programmed_sessions
 -- ============================================================
 -- PROGRAMMED EXERCISES
 -- ============================================================
+DROP POLICY IF EXISTS programmed_exercises_access ON programmed_exercises;
 CREATE POLICY programmed_exercises_access ON programmed_exercises
     FOR ALL
     USING (
@@ -291,10 +325,12 @@ CREATE POLICY programmed_exercises_access ON programmed_exercises
 -- ============================================================
 -- SESSION COMPLETIONS
 -- ============================================================
+DROP POLICY IF EXISTS session_completions_client_access ON session_completions;
 CREATE POLICY session_completions_client_access ON session_completions
     FOR ALL
     USING (client_id = current_app_user_id());
 
+DROP POLICY IF EXISTS session_completions_coach_access ON session_completions;
 CREATE POLICY session_completions_coach_access ON session_completions
     FOR SELECT
     USING (is_coach_of(client_id));
@@ -302,6 +338,7 @@ CREATE POLICY session_completions_coach_access ON session_completions
 -- ============================================================
 -- EXERCISE LOGS
 -- ============================================================
+DROP POLICY IF EXISTS exercise_logs_access ON exercise_logs;
 CREATE POLICY exercise_logs_access ON exercise_logs
     FOR ALL
     USING (
@@ -315,10 +352,12 @@ CREATE POLICY exercise_logs_access ON exercise_logs
 -- ============================================================
 -- BEHAVIOR GOALS
 -- ============================================================
+DROP POLICY IF EXISTS behavior_goals_coach_access ON behavior_goals;
 CREATE POLICY behavior_goals_coach_access ON behavior_goals
     FOR ALL
     USING (coach_id = current_app_user_id());
 
+DROP POLICY IF EXISTS behavior_goals_client_access ON behavior_goals;
 CREATE POLICY behavior_goals_client_access ON behavior_goals
     FOR SELECT
     USING (client_id = current_app_user_id());
@@ -326,6 +365,7 @@ CREATE POLICY behavior_goals_client_access ON behavior_goals
 -- ============================================================
 -- BEHAVIOR CUES
 -- ============================================================
+DROP POLICY IF EXISTS behavior_cues_access ON behavior_cues;
 CREATE POLICY behavior_cues_access ON behavior_cues
     FOR ALL
     USING (
@@ -339,10 +379,12 @@ CREATE POLICY behavior_cues_access ON behavior_cues
 -- ============================================================
 -- BEHAVIOR CHECK-INS
 -- ============================================================
+DROP POLICY IF EXISTS behavior_checkins_client_access ON behavior_checkins;
 CREATE POLICY behavior_checkins_client_access ON behavior_checkins
     FOR ALL
     USING (client_id = current_app_user_id());
 
+DROP POLICY IF EXISTS behavior_checkins_coach_access ON behavior_checkins;
 CREATE POLICY behavior_checkins_coach_access ON behavior_checkins
     FOR SELECT
     USING (is_coach_of(client_id));
@@ -350,6 +392,7 @@ CREATE POLICY behavior_checkins_coach_access ON behavior_checkins
 -- ============================================================
 -- PROGRAM ADJUSTMENTS
 -- ============================================================
+DROP POLICY IF EXISTS program_adjustments_access ON program_adjustments;
 CREATE POLICY program_adjustments_access ON program_adjustments
     FOR ALL
     USING (

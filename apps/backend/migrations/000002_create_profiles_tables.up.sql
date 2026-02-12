@@ -16,6 +16,7 @@ CREATE INDEX IF NOT EXISTS idx_coach_profiles_user_id ON coach_profiles(user_id)
 
 ALTER TABLE coach_profiles ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_coach_profiles_updated_at ON coach_profiles;
 CREATE TRIGGER update_coach_profiles_updated_at
     BEFORE UPDATE ON coach_profiles
     FOR EACH ROW
@@ -41,6 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_client_profiles_user_id ON client_profiles(user_i
 
 ALTER TABLE client_profiles ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_client_profiles_updated_at ON client_profiles;
 CREATE TRIGGER update_client_profiles_updated_at
     BEFORE UPDATE ON client_profiles
     FOR EACH ROW
@@ -65,6 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_ccr_status ON coach_client_relationships(status);
 
 ALTER TABLE coach_client_relationships ENABLE ROW LEVEL SECURITY;
 
+DROP TRIGGER IF EXISTS update_ccr_updated_at ON coach_client_relationships;
 CREATE TRIGGER update_ccr_updated_at
     BEFORE UPDATE ON coach_client_relationships
     FOR EACH ROW

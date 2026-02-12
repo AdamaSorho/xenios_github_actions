@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/xenios/backend/internal/adapter/handler"
 )
 
 func TestGetPort_Default(t *testing.T) {
@@ -373,12 +374,15 @@ func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
 	}()
 
 	// Act
-	h, cleanup := setupHealthHandler()
+	h, pool, cleanup := setupHealthHandler()
 	defer cleanup()
 
 	// Assert - handler should be non-nil
 	if h == nil {
 		t.Error("expected non-nil handler when DATABASE_URL is not set")
+	}
+	if pool != nil {
+		t.Error("expected nil pool when DATABASE_URL is not set")
 	}
 }
 
@@ -395,12 +399,15 @@ func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
 	}()
 
 	// Act
-	h, cleanup := setupHealthHandler()
+	h, pool, cleanup := setupHealthHandler()
 	defer cleanup()
 
 	// Assert - handler should still be non-nil (graceful degradation)
 	if h == nil {
 		t.Error("expected non-nil handler even with invalid DATABASE_URL")
+	}
+	if pool != nil {
+		t.Error("expected nil pool with invalid DATABASE_URL")
 	}
 }
 
@@ -417,12 +424,15 @@ func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
 	}()
 
 	// Act
-	h, cleanup := setupHealthHandler()
+	h, pool, cleanup := setupHealthHandler()
 	defer cleanup()
 
 	// Assert - handler should still be non-nil (graceful degradation)
 	if h == nil {
 		t.Error("expected non-nil handler even with unreachable database")
+	}
+	if pool != nil {
+		t.Error("expected nil pool with unreachable database")
 	}
 }
 
@@ -437,7 +447,7 @@ func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
 	}()
 
 	// Act
-	_, cleanup := setupHealthHandler()
+	_, _, cleanup := setupHealthHandler()
 
 	// Assert - cleanup should be callable without panicking (no-op when no DB)
 	cleanup()
@@ -549,6 +559,66 @@ func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
 	}
 }
 
+func TestSetupJobQueue_ReturnsHandlerAndWorker(t *testing.T) {
+	// Create a pool with an unreachable database (lazy connection)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	queueHandler, w := setupJobQueue(pool)
+
+	if queueHandler == nil {
+		t.Error("expected non-nil QueueHandler")
+	}
+	if w == nil {
+		t.Error("expected non-nil Worker")
+	}
+	if !w.IsRunning() {
+		t.Error("expected worker to be running after setup")
+	}
+
+	w.Stop()
+}
+
+func TestSetupJobQueue_RegistersAllJobTypes(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	_, w := setupJobQueue(pool)
+	defer w.Stop()
+
+	types := w.RegisteredJobTypes()
+	if len(types) != 6 {
+		t.Errorf("expected 6 registered job types, got %d", len(types))
+	}
+}
+
+func TestSetupJobQueue_WorkerCanBeStopped(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	_, w := setupJobQueue(pool)
+	if !w.IsRunning() {
+		t.Error("expected worker to be running")
+	}
+
+	w.Stop()
+	if w.IsRunning() {
+		t.Error("expected worker to be stopped")
+	}
+}
+
 func TestWireHealthHandler_ReturnsHandlerAndCleanup(t *testing.T) {
 	// Arrange - create a pool with an unreachable database
 	// The pool itself is created successfully; it's lazy and won't connect until used
@@ -586,5 +656,62 @@ func TestWireHealthHandler_CleanupClosesPool(t *testing.T) {
 	// Calling Ping on a closed pool should fail
 	if err := pool.Ping(ctx); err == nil {
 		t.Error("expected error when pinging closed pool")
+	}
+}
+
+func TestConfigureRoutes_WithPool_RegistersJobEndpoints(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	healthHandler := handler.NewHealthHandler()
+	mux, w := configureRoutes(healthHandler, pool)
+
+	if mux == nil {
+		t.Error("expected non-nil mux")
+	}
+	if w == nil {
+		t.Error("expected non-nil worker when pool is provided")
+	}
+	if !w.IsRunning() {
+		t.Error("expected worker to be running")
+	}
+	w.Stop()
+}
+
+func TestConfigureRoutes_WithoutPool_NoJobEndpoints(t *testing.T) {
+	healthHandler := handler.NewHealthHandler()
+	mux, w := configureRoutes(healthHandler, nil)
+
+	if mux == nil {
+		t.Error("expected non-nil mux")
+	}
+	if w != nil {
+		t.Error("expected nil worker when pool is nil")
+	}
+}
+
+func TestConfigureRoutes_Cleanup_StopsWorker(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	healthHandler := handler.NewHealthHandler()
+	_, w := configureRoutes(healthHandler, pool)
+
+	if !w.IsRunning() {
+		t.Error("expected worker to be running")
+	}
+
+	// Simulate cleanup behavior
+	w.Stop()
+	if w.IsRunning() {
+		t.Error("expected worker to be stopped after cleanup")
 	}
 }

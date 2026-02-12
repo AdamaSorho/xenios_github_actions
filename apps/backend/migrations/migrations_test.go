@@ -63,6 +63,7 @@ func TestMigrations_AllFilesExist(t *testing.T) {
 		"000005_create_analytics_tables",
 		"000006_create_programming_tables",
 		"000007_create_rls_policies",
+		"000008_create_job_queue",
 	}
 
 	dir := migrationDir(t)
@@ -571,6 +572,9 @@ func TestMigrations_AllCoreTables(t *testing.T) {
 		"behavior_cues",
 		"behavior_checkins",
 		"program_adjustments",
+		// Job queue tables (000008)
+		"jobs",
+		"jobs_dead_letter",
 	}
 
 	// Collect all SQL content
@@ -681,9 +685,10 @@ func TestMigrations_JSONBOnlyWhereNeeded(t *testing.T) {
 
 	// Allowed JSONB columns per the issue spec
 	allowedJSONB := map[string][]string{
-		"000003_create_sessions_tables.up.sql":   {"summary"},
-		"000004_create_health_data_tables.up.sql": {"metrics"},
-		"000005_create_analytics_tables.up.sql":   {"factors", "metadata"},
+		"000003_create_sessions_tables.up.sql":     {"summary"},
+		"000004_create_health_data_tables.up.sql":  {"metrics"},
+		"000005_create_analytics_tables.up.sql":    {"factors", "metadata"},
+		"000008_create_job_queue.up.sql":           {"payload", "details"},
 	}
 
 	for _, f := range files {

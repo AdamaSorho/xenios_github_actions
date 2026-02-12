@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xenios/backend/internal/adapter/handler"
 	"github.com/xenios/backend/internal/adapter/repository"
+	"github.com/xenios/backend/internal/domain/entities"
+	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
 
@@ -29,12 +31,19 @@ func setupServer() (*http.Server, func()) {
 	port := getPort()
 
 	// Set up health handler with optional database connectivity
-	healthHandler, cleanup := setupHealthHandler()
-	versionHandler := handler.NewVersionHandler()
+	healthHandler, pool, cleanup := setupHealthHandler()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler.Health)
-	mux.HandleFunc("GET /version", versionHandler.Version)
+	mux, jobWorker := configureRoutes(healthHandler, pool)
+
+	// Compose cleanup function
+	fullCleanup := func() {
+		if jobWorker != nil {
+			log.Println("Stopping job worker...")
+			jobWorker.Stop()
+			log.Println("Job worker stopped")
+		}
+		cleanup()
+	}
 
 	return &http.Server{
 		Addr:         ":" + port,
@@ -42,18 +51,39 @@ func setupServer() (*http.Server, func()) {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
-	}, cleanup
+	}, fullCleanup
+}
+
+// configureRoutes sets up the HTTP mux with all routes.
+// If pool is non-nil, job queue endpoints are registered.
+func configureRoutes(healthHandler *handler.HealthHandler, pool *pgxpool.Pool) (*http.ServeMux, *worker.Worker) {
+	versionHandler := handler.NewVersionHandler()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", healthHandler.Health)
+	mux.HandleFunc("GET /version", versionHandler.Version)
+
+	// Set up job queue infrastructure if database is available
+	var jobWorker *worker.Worker
+	if pool != nil {
+		queueHandler, w := setupJobQueue(pool)
+		jobWorker = w
+		mux.HandleFunc("POST /jobs", queueHandler.EnqueueJob)
+		mux.HandleFunc("GET /jobs/status", queueHandler.GetQueueStatus)
+	}
+
+	return mux, jobWorker
 }
 
 // setupHealthHandler creates a health handler with optional database connectivity.
 // If DATABASE_URL is not set, returns a handler with no use case (legacy behavior).
 // If DATABASE_URL is set, wires up the full health checking infrastructure.
-// Returns the handler and a cleanup function to close the database pool.
-func setupHealthHandler() (*handler.HealthHandler, func()) {
+// Returns the handler, the database pool (nil if no database), and a cleanup function.
+func setupHealthHandler() (*handler.HealthHandler, *pgxpool.Pool, func()) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Println("DATABASE_URL not set, health check will not verify database connectivity")
-		return handler.NewHealthHandler(), func() {}
+		return handler.NewHealthHandler(), nil, func() {}
 	}
 
 	// Set up database connection pool
@@ -62,7 +92,7 @@ func setupHealthHandler() (*handler.HealthHandler, func()) {
 	if err != nil {
 		log.Printf("Warning: failed to create database connection pool: %v", err)
 		log.Println("Health check will not verify database connectivity")
-		return handler.NewHealthHandler(), func() {}
+		return handler.NewHealthHandler(), nil, func() {}
 	}
 
 	// Verify initial connection
@@ -70,10 +100,11 @@ func setupHealthHandler() (*handler.HealthHandler, func()) {
 		log.Printf("Warning: failed to ping database: %v", err)
 		log.Println("Health check will not verify database connectivity")
 		pool.Close()
-		return handler.NewHealthHandler(), func() {}
+		return handler.NewHealthHandler(), nil, func() {}
 	}
 
-	return wireHealthHandler(pool)
+	healthHandler, cleanup := wireHealthHandler(pool)
+	return healthHandler, pool, cleanup
 }
 
 // wireHealthHandler sets up the health checking infrastructure with an established database pool.
@@ -93,6 +124,46 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 	}
 
 	return handler.NewHealthHandlerWithUseCase(healthUseCase), cleanup
+}
+
+// setupJobQueue wires up the job queue infrastructure and starts the worker.
+func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+	// Infrastructure layer: PostgreSQL-backed job queue
+	jobQueue := repository.NewPostgresJobQueue(pool)
+
+	// Application layer: use cases
+	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
+	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
+
+	// Presentation layer: HTTP handler
+	queueHandler := handler.NewQueueHandler(enqueueUC, statusUC)
+
+	// Worker infrastructure
+	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
+
+	// Register placeholder handlers for all job types.
+	// These will be replaced with real implementations as features are built.
+	allJobTypes := []entities.JobType{
+		entities.JobTypeTranscription,
+		entities.JobTypeDocumentExtraction,
+		entities.JobTypeInsightGeneration,
+		entities.JobTypeAnalyticsAggregation,
+		entities.JobTypeRiskDetection,
+		entities.JobTypeAudioCleanup,
+	}
+	for _, jt := range allJobTypes {
+		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
+			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
+			return nil
+		})
+	}
+
+	// Start worker
+	ctx := context.Background()
+	w.Start(ctx)
+	log.Println("Job worker started with handlers for all job types")
+
+	return queueHandler, w
 }
 
 // getPort returns the port to listen on

@@ -47,7 +47,18 @@ jobs:
             const lowerComment = comment.toLowerCase();
             const fixTDD = lowerComment.includes('tdd quality gate report');
             const fixReview = lowerComment.includes('claude code review');
-            const fixBoth = fixTDD && fixReview;
+            const fixConflicts = lowerComment.includes('conflicts');
+
+            // If conflicts mode, skip feedback fetching
+            if (fixConflicts) {
+              core.setOutput('branch', pr.head.ref);
+              core.setOutput('base_branch', pr.base.ref);
+              core.setOutput('pr_number', prNumber.toString());
+              core.setOutput('target', 'conflicts');
+              core.setOutput('tdd_report', '');
+              core.setOutput('review_report', '');
+              return;
+            }
 
             // Default to both if neither is specified (just "@claude-fix" alone)
             const targetTDD = fixTDD || (!fixTDD && !fixReview);
@@ -86,6 +97,7 @@ jobs:
             else target = 'Claude Code Review';
 
             core.setOutput('branch', pr.head.ref);
+            core.setOutput('base_branch', pr.base.ref);
             core.setOutput('pr_number', prNumber.toString());
             core.setOutput('target', target);
             core.setOutput('tdd_report', tddReport);
@@ -97,6 +109,36 @@ jobs:
           ref: ${{ steps.pr-info.outputs.branch }}
           token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 0
+
+      - name: Detect merge conflicts
+        id: conflict-check
+        if: steps.pr-info.outputs.target == 'conflicts'
+        run: |
+          BASE_BRANCH="${{ steps.pr-info.outputs.base_branch }}"
+          git fetch origin "$BASE_BRANCH"
+
+          # Check if branch is already up to date
+          if git merge-base --is-ancestor "origin/$BASE_BRANCH" HEAD; then
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "conflict_files=" >> $GITHUB_OUTPUT
+            echo "Branch is already up to date with $BASE_BRANCH"
+          else
+            # Attempt merge to detect conflicts
+            if git merge --no-commit --no-ff "origin/$BASE_BRANCH" 2>/dev/null; then
+              # No conflicts - abort the merge so Claude can do it cleanly
+              git merge --abort
+              echo "has_conflicts=false" >> $GITHUB_OUTPUT
+              echo "conflict_files=" >> $GITHUB_OUTPUT
+              echo "No conflicts detected - clean merge possible"
+            else
+              # Conflicts detected - capture file list
+              CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+              git merge --abort
+              echo "has_conflicts=true" >> $GITHUB_OUTPUT
+              echo "conflict_files=$CONFLICTS" >> $GITHUB_OUTPUT
+              echo "Conflicts detected in: $CONFLICTS"
+            fi
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -118,6 +160,7 @@ jobs:
           git config --global user.email "claude[bot]@users.noreply.github.com"
 
       - name: Claude Fixes PR
+        if: steps.pr-info.outputs.target != 'conflicts'
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -189,3 +232,86 @@ jobs:
             --max-turns 200
             --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
+
+      - name: Claude Resolves Conflicts
+        if: steps.pr-info.outputs.target == 'conflicts'
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_CONFLICTS: ${{ steps.conflict-check.outputs.has_conflicts }}
+          CONFLICT_FILES: ${{ steps.conflict-check.outputs.conflict_files }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: '@claude-fix'
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
+          prompt: |
+            You are an autonomous merge conflict resolver for the Xenios platform.
+            Branch: ${{ steps.pr-info.outputs.branch }}
+            Base branch: ${{ steps.pr-info.outputs.base_branch }}
+            PR: #${{ steps.pr-info.outputs.pr_number }}
+            Has conflicts: ${{ steps.conflict-check.outputs.has_conflicts }}
+            Conflicting files: ${{ steps.conflict-check.outputs.conflict_files }}
+
+            ## YOUR MISSION
+
+            Resolve ALL merge conflicts on this PR branch. You MUST:
+
+            1. **Merge the base branch**:
+               ```bash
+               git fetch origin ${{ steps.pr-info.outputs.base_branch }}
+               git merge origin/${{ steps.pr-info.outputs.base_branch }}
+               ```
+               This will create conflict markers in files.
+
+            2. **For each conflicting file**:
+               - Read the file with conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+               - Understand what BOTH sides are doing
+               - Resolve by keeping the correct code from both sides
+               - Use Edit tool to replace the conflicted sections (remove ALL markers)
+               - NEVER blindly pick one side - merge the intent of both changes
+
+            3. **Stage and complete the merge**:
+               ```bash
+               git add <resolved files>
+               git commit -m "[Fix] Resolve merge conflicts with ${{ steps.pr-info.outputs.base_branch }}"
+               ```
+
+            4. **Run tests** to verify nothing broke:
+               - Go: `cd apps/backend && go build ./... && go test ./...`
+               - Web: `cd apps/web && npm run build` (if applicable)
+
+            5. **Push**:
+               ```bash
+               git push origin ${{ steps.pr-info.outputs.branch }}
+               ```
+
+            ## CONFLICT RESOLUTION RULES
+
+            - NEVER use `git checkout --ours` or `git checkout --theirs` blindly
+            - ALWAYS read both versions and understand the intent
+            - Preserve ALL functionality from both branches
+            - If the base branch added new files/functions, keep them
+            - If the PR branch modified something the base branch also modified, merge both changes
+            - Maintain Clean Architecture principles during resolution
+            - After resolving, ensure NO conflict markers remain (`<<<<<<<`, `=======`, `>>>>>>>`)
+
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in CI with NO human interaction.
+            - NEVER stop to ask for clarification
+            - Make the best resolution decision based on code context
+            - ALWAYS complete the merge, commit, and push
+          claude_args: |
+            --max-turns 100
+            --model claude-opus-4-6
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+
+      - name: Verify no conflict markers remain
+        if: steps.pr-info.outputs.target == 'conflicts'
+        run: |
+          # Check for leftover conflict markers in source files
+          if grep -rn "^<<<<<<< \|^=======$\|^>>>>>>> " --include="*.go" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.sql" . 2>/dev/null; then
+            echo "::error::Conflict markers still present in source files!"
+            exit 1
+          fi
+          echo "No conflict markers found - resolution complete"

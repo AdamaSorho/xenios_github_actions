@@ -113,6 +113,147 @@ jobs:
           echo "violation=false" >> $GITHUB_OUTPUT
           echo "Mobile database access check passed"
 
+      # --- Build Verification ---
+
+      - name: Go - Build check
+        id: go-build
+        working-directory: apps/backend
+        run: |
+          if CGO_ENABLED=0 go build ./...; then
+            echo "build=passed" >> $GITHUB_OUTPUT
+            echo "Go build passed"
+          else
+            echo "::error::Go build failed"
+            echo "build=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Web - Build check
+        id: web-build
+        working-directory: apps/web
+        run: |
+          if npm run build 2>/dev/null; then
+            echo "build=passed" >> $GITHUB_OUTPUT
+            echo "Web build passed"
+          else
+            echo "build=skipped" >> $GITHUB_OUTPUT
+            echo "Web build skipped (no build script or failed)"
+          fi
+        continue-on-error: true
+
+      - name: Web - TypeScript type check
+        id: web-typecheck
+        working-directory: apps/web
+        run: |
+          if npx tsc --noEmit 2>/dev/null; then
+            echo "typecheck=passed" >> $GITHUB_OUTPUT
+            echo "TypeScript type check passed"
+          else
+            echo "typecheck=skipped" >> $GITHUB_OUTPUT
+            echo "TypeScript type check skipped or failed"
+          fi
+        continue-on-error: true
+
+      # --- Linting ---
+
+      - name: Go - Vet
+        id: go-vet
+        working-directory: apps/backend
+        run: |
+          ISSUES=$(go vet ./... 2>&1 || true)
+          if [ -z "$ISSUES" ]; then
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "Go vet passed"
+          else
+            echo "$ISSUES"
+            COUNT=$(echo "$ISSUES" | grep -c "^" || true)
+            echo "issues=$COUNT" >> $GITHUB_OUTPUT
+            echo "::warning::Go vet found $COUNT issue(s)"
+          fi
+
+      - name: Go - Lint (golangci-lint)
+        id: go-lint
+        working-directory: apps/backend
+        run: |
+          # Install golangci-lint
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.1.6
+
+          if $(go env GOPATH)/bin/golangci-lint run ./... 2>/dev/null; then
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "Go lint passed"
+          else
+            ISSUES=$($(go env GOPATH)/bin/golangci-lint run ./... 2>&1 | grep -c "^" || echo "0")
+            echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+            echo "::warning::golangci-lint found issue(s)"
+          fi
+        continue-on-error: true
+
+      - name: Web - ESLint
+        id: web-eslint
+        working-directory: apps/web
+        run: |
+          if npx eslint src/ --ext .ts,.tsx --max-warnings 0 2>/dev/null; then
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "ESLint passed"
+          else
+            echo "issues=1" >> $GITHUB_OUTPUT
+            echo "ESLint found issues or not configured"
+          fi
+        continue-on-error: true
+
+      # --- Security ---
+
+      - name: Go - Security scan (gosec)
+        id: go-security
+        working-directory: apps/backend
+        run: |
+          # Install gosec
+          go install github.com/securego/gosec/v2/cmd/gosec@latest 2>/dev/null
+
+          if $(go env GOPATH)/bin/gosec -quiet ./... 2>/dev/null; then
+            echo "issues=0" >> $GITHUB_OUTPUT
+            echo "Go security scan passed"
+          else
+            ISSUES=$($(go env GOPATH)/bin/gosec -quiet ./... 2>&1 | grep -c "\[G" || echo "0")
+            echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+            echo "::warning::gosec found $ISSUES issue(s)"
+          fi
+        continue-on-error: true
+
+      - name: Go - SQL injection check
+        id: sql-injection
+        working-directory: apps/backend
+        run: |
+          VIOLATIONS=0
+          # Check for string concatenation in SQL queries (common injection pattern)
+          # Look for fmt.Sprintf with SQL keywords followed by %s or %v
+          if grep -rnE 'fmt\.Sprintf\(.*(SELECT|INSERT|UPDATE|DELETE|WHERE).*%[sv]' --include="*.go" . 2>/dev/null; then
+            echo "::error::Potential SQL injection: string interpolation in SQL query"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+          # Check for string concatenation with + in SQL context
+          if grep -rnE '"(SELECT|INSERT|UPDATE|DELETE|WHERE).*"\s*\+' --include="*.go" . 2>/dev/null; then
+            echo "::error::Potential SQL injection: string concatenation in SQL query"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+          echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
+          if [ "$VIOLATIONS" -eq 0 ]; then
+            echo "SQL injection check passed"
+          fi
+
+      - name: npm audit (Web)
+        id: npm-audit-web
+        working-directory: apps/web
+        run: |
+          VULNS=$(npm audit --production --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');try{const j=JSON.parse(d);console.log(j.metadata?.vulnerabilities?.high||0)}catch{console.log(0)}" 2>/dev/null || echo "0")
+          echo "high_vulns=$VULNS" >> $GITHUB_OUTPUT
+          if [ "$VULNS" -gt 0 ]; then
+            echo "::warning::npm audit found $VULNS high severity vulnerability(ies)"
+          else
+            echo "npm audit passed (no high vulnerabilities)"
+          fi
+        continue-on-error: true
+
       # ═══════════════════════════════════════════════════════════════
       # DETERMINISTIC SCORING (75 points total)
       # ═══════════════════════════════════════════════════════════════
@@ -512,6 +653,15 @@ jobs:
           ARCH_SCORE: ${{ steps.arch-score.outputs.score || '0' }}
           ARCH_VIOLATIONS: ${{ steps.arch-score.outputs.violations || '0' }}
           CLAUDE_OUTPUT: ${{ steps.claude-assessment.outputs.structured_output || '{}' }}
+          GO_BUILD: ${{ steps.go-build.outputs.build || 'skipped' }}
+          WEB_BUILD: ${{ steps.web-build.outputs.build || 'skipped' }}
+          WEB_TYPECHECK: ${{ steps.web-typecheck.outputs.typecheck || 'skipped' }}
+          GO_VET_ISSUES: ${{ steps.go-vet.outputs.issues || '0' }}
+          GO_LINT_ISSUES: ${{ steps.go-lint.outputs.issues || '0' }}
+          WEB_ESLINT_ISSUES: ${{ steps.web-eslint.outputs.issues || '0' }}
+          GO_SECURITY_ISSUES: ${{ steps.go-security.outputs.issues || '0' }}
+          SQL_INJECTION_VIOLATIONS: ${{ steps.sql-injection.outputs.violations || '0' }}
+          NPM_AUDIT_HIGH: ${{ steps.npm-audit-web.outputs.high_vulns || '0' }}
         with:
           script: |
             // Parse deterministic scores
@@ -537,14 +687,31 @@ jobs:
               errorHandlingScore = 0;
             }
 
+            // Parse new deterministic check results
+            const goBuild = process.env.GO_BUILD;
+            const webBuild = process.env.WEB_BUILD;
+            const webTypecheck = process.env.WEB_TYPECHECK;
+            const goVetIssues = parseInt(process.env.GO_VET_ISSUES || '0');
+            const goLintIssues = parseInt(process.env.GO_LINT_ISSUES || '0');
+            const webEslintIssues = parseInt(process.env.WEB_ESLINT_ISSUES || '0');
+            const goSecurityIssues = parseInt(process.env.GO_SECURITY_ISSUES || '0');
+            const sqlInjectionViolations = parseInt(process.env.SQL_INJECTION_VIOLATIONS || '0');
+            const npmAuditHigh = parseInt(process.env.NPM_AUDIT_HIGH || '0');
+
             // Calculate composite score
             const deterministicTotal = coverageScore + testFirstScore + testCodeScore + archScore;
             const llmTotal = edgeCaseScore + errorHandlingScore;
             const compositeScore = deterministicTotal + llmTotal;
 
+            // Determine hard blockers (fail regardless of score)
+            const hardBlockers = [];
+            if (goBuild === 'failed') hardBlockers.push('Go build failed');
+            if (sqlInjectionViolations > 0) hardBlockers.push(`SQL injection pattern detected (${sqlInjectionViolations} violation(s))`);
+
             // Determine grade
             let grade, gradeEmoji;
-            if (compositeScore >= 90) { grade = 'A+'; gradeEmoji = '🏆'; }
+            if (hardBlockers.length > 0) { grade = 'F'; gradeEmoji = '🔴'; }
+            else if (compositeScore >= 90) { grade = 'A+'; gradeEmoji = '🏆'; }
             else if (compositeScore >= 85) { grade = 'A'; gradeEmoji = '🟢'; }
             else if (compositeScore >= 80) { grade = 'A-'; gradeEmoji = '🟢'; }
             else if (compositeScore >= 75) { grade = 'B+'; gradeEmoji = '🟢'; }
@@ -555,8 +722,8 @@ jobs:
             else if (compositeScore >= 50) { grade = 'C-'; gradeEmoji = '🟠'; }
             else { grade = 'F'; gradeEmoji = '🔴'; }
 
-            // Determine pass/fail (minimum 60 to pass)
-            const passed = compositeScore >= 60;
+            // Determine pass/fail (minimum 60 to pass AND no hard blockers)
+            const passed = compositeScore >= 60 && hardBlockers.length === 0;
             const verdict = passed ? '✅ PASS' : '❌ FAIL';
 
             // Build progress bars
@@ -565,64 +732,104 @@ jobs:
               return '█'.repeat(filled) + '░'.repeat(10 - filled);
             }
 
+            // Status emoji helpers
+            function statusIcon(val) {
+              if (val === 'passed') return '✅';
+              if (val === 'failed') return '❌';
+              return '⏭️';
+            }
+            function issueIcon(count) {
+              if (count === 0) return '✅ 0';
+              return `⚠️ ${count}`;
+            }
+
+            // Build hard blocker section
+            const blockerSection = hardBlockers.length > 0
+              ? `\n### 🚫 Hard Blockers (auto-fail)\n${hardBlockers.map(b => '- ❌ ' + b).join('\n')}\n`
+              : '';
+
             // Build report
             const report = `## 📊 TDD Quality Gate Report
 
-            ${gradeEmoji} **Grade: ${grade}** | **Score: ${compositeScore}/100** | ${verdict}
+${gradeEmoji} **Grade: ${grade}** | **Score: ${compositeScore}/100** | ${verdict}
+${blockerSection}
+---
 
-            ---
+### Deterministic Checks
 
-            ### Deterministic Scores (${deterministicTotal}/75)
+| Check | Status | Notes |
+|-------|--------|-------|
+| **Go Build** | ${statusIcon(goBuild)} | ${goBuild === 'passed' ? 'Compiles successfully' : goBuild === 'failed' ? '**BUILD FAILED** (hard blocker)' : 'Skipped'} |
+| **Web Build** | ${statusIcon(webBuild)} | ${webBuild === 'passed' ? 'Builds successfully' : 'Skipped or no build script'} |
+| **Web TypeScript** | ${statusIcon(webTypecheck)} | ${webTypecheck === 'passed' ? 'No type errors' : 'Skipped or has type errors'} |
+| **Go Vet** | ${issueIcon(goVetIssues)} | ${goVetIssues === 0 ? 'No issues' : goVetIssues + ' issue(s)'} |
+| **Go Lint** | ${issueIcon(goLintIssues)} | ${goLintIssues === 0 ? 'Clean' : goLintIssues + ' issue(s)'} |
+| **Web ESLint** | ${issueIcon(webEslintIssues)} | ${webEslintIssues === 0 ? 'Clean' : 'Has lint issues'} |
+| **Go Security (gosec)** | ${issueIcon(goSecurityIssues)} | ${goSecurityIssues === 0 ? 'No findings' : goSecurityIssues + ' finding(s)'} |
+| **SQL Injection** | ${sqlInjectionViolations === 0 ? '✅ 0' : '❌ ' + sqlInjectionViolations} | ${sqlInjectionViolations === 0 ? 'No unsafe patterns' : '**Pattern detected** (hard blocker)'} |
+| **npm Audit (high)** | ${npmAuditHigh === 0 ? '✅ 0' : '⚠️ ' + npmAuditHigh} | ${npmAuditHigh === 0 ? 'No high vulnerabilities' : npmAuditHigh + ' high severity'} |
 
-            | Component | Score | Details | Bar |
-            |-----------|-------|---------|-----|
-            | **Test Coverage** | **${coverageScore}/30** | Avg: ${process.env.AVG_COVERAGE}% (Go: ${process.env.GO_COVERAGE}%, Web: ${process.env.WEB_COVERAGE}%, Mobile: ${process.env.MOBILE_COVERAGE}%) | ${progressBar(coverageScore, 30)} |
-            | **Test-Before-Code** | **${testFirstScore}/20** | ${process.env.TEST_FIRST_GOOD}/${process.env.TEST_FIRST_PAIRS} pairs test-first (${process.env.TEST_FIRST_RATIO}%) | ${progressBar(testFirstScore, 20)} |
-            | **Test:Code Ratio** | **${testCodeScore}/15** | ${process.env.TEST_LINES} test lines / ${process.env.IMPL_LINES} impl lines (${process.env.TEST_CODE_RATIO}x) | ${progressBar(testCodeScore, 15)} |
-            | **Clean Architecture** | **${archScore}/10** | ${process.env.ARCH_VIOLATIONS} violations | ${progressBar(archScore, 10)} |
+---
 
-            ### LLM Assessment Scores (${llmTotal}/25)
+### TDD Scores (${deterministicTotal}/75)
 
-            | Component | Score | Details |
-            |-----------|-------|---------|
-            | **Edge Case Coverage** | **${edgeCaseScore}/15** | Boundary: ${llmDetails.boundary_details || 'N/A'} |
-            | **Error Handling** | **${errorHandlingScore}/10** | ${llmDetails.error_path_details || 'N/A'} |
+| Component | Score | Details | Bar |
+|-----------|-------|---------|-----|
+| **Test Coverage** | **${coverageScore}/30** | Avg: ${process.env.AVG_COVERAGE}% (Go: ${process.env.GO_COVERAGE}%, Web: ${process.env.WEB_COVERAGE}%, Mobile: ${process.env.MOBILE_COVERAGE}%) | ${progressBar(coverageScore, 30)} |
+| **Test-Before-Code** | **${testFirstScore}/20** | ${process.env.TEST_FIRST_GOOD}/${process.env.TEST_FIRST_PAIRS} pairs test-first (${process.env.TEST_FIRST_RATIO}%) | ${progressBar(testFirstScore, 20)} |
+| **Test:Code Ratio** | **${testCodeScore}/15** | ${process.env.TEST_LINES} test lines / ${process.env.IMPL_LINES} impl lines (${process.env.TEST_CODE_RATIO}x) | ${progressBar(testCodeScore, 15)} |
+| **Clean Architecture** | **${archScore}/10** | ${process.env.ARCH_VIOLATIONS} violations | ${progressBar(archScore, 10)} |
 
-            <details>
-            <summary>📋 Detailed LLM Assessment</summary>
+### LLM Assessment Scores (${llmTotal}/25)
 
-            **Boundary Tests**: ${llmDetails.boundary_details || 'Not assessed'}
-            **Input Validation**: ${llmDetails.validation_details || 'Not assessed'}
-            **Concurrency**: ${llmDetails.concurrency_details || 'Not assessed'}
-            **Error Paths**: ${llmDetails.error_path_details || 'Not assessed'}
-            **Error Propagation**: ${llmDetails.error_propagation_details || 'Not assessed'}
+| Component | Score | Details |
+|-----------|-------|---------|
+| **Edge Case Coverage** | **${edgeCaseScore}/15** | Boundary: ${llmDetails.boundary_details || 'N/A'} |
+| **Error Handling** | **${errorHandlingScore}/10** | ${llmDetails.error_path_details || 'N/A'} |
 
-            </details>
+<details>
+<summary>📋 Detailed LLM Assessment</summary>
 
-            ---
+**Boundary Tests**: ${llmDetails.boundary_details || 'Not assessed'}
+**Input Validation**: ${llmDetails.validation_details || 'Not assessed'}
+**Concurrency**: ${llmDetails.concurrency_details || 'Not assessed'}
+**Error Paths**: ${llmDetails.error_path_details || 'Not assessed'}
+**Error Propagation**: ${llmDetails.error_propagation_details || 'Not assessed'}
 
-            ### Scoring Rubric
+</details>
 
-            <details>
-            <summary>How is this score calculated?</summary>
+---
 
-            | Component | Max | Method | Rubric |
-            |-----------|-----|--------|--------|
-            | Test Coverage | 30 | \`go test -cover\` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10, 50%+=7, 30%+=4, 20%+=2 |
-            | Test-Before-Code | 20 | Git commit order analysis | 100%=20, 80%+=16, 60%+=12, 40%+=8, 20%+=4 |
-            | Test:Code Ratio | 15 | Line count comparison | ≥1.5x=15, ≥1.0x=13, ≥0.7x=10, ≥0.5x=7, ≥0.3x=4 |
-            | Clean Architecture | 10 | Static import analysis | 0 violations=10, 1=5, 2+=0 |
-            | Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |
-            | Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |
+### Scoring Rubric
 
-            **Passing score: 60/100**
-            **Deterministic weight: 75%** (repeatable across runs)
-            **LLM weight: 25%** (strict rubric minimizes variance)
+<details>
+<summary>How is this score calculated?</summary>
 
-            </details>
+**Hard Blockers (auto-fail regardless of score):**
+- Go build failure
+- SQL injection patterns detected
 
-            ---
-            🤖 TDD Quality Gate | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+**Scored Components (100 points):**
+
+| Component | Max | Method | Rubric |
+|-----------|-----|--------|--------|
+| Test Coverage | 30 | \`go test -cover\` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10, 50%+=7, 30%+=4, 20%+=2 |
+| Test-Before-Code | 20 | Git commit order analysis | 100%=20, 80%+=16, 60%+=12, 40%+=8, 20%+=4 |
+| Test:Code Ratio | 15 | Line count comparison | ≥1.5x=15, ≥1.0x=13, ≥0.7x=10, ≥0.5x=7, ≥0.3x=4 |
+| Clean Architecture | 10 | Static import analysis | 0 violations=10, 1=5, 2+=0 |
+| Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |
+| Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |
+
+**Informational checks** (reported but not scored): Go vet, golangci-lint, ESLint, gosec, npm audit, web build, TypeScript types
+
+**Passing score: 60/100** + no hard blockers
+**Deterministic weight: 75%** (repeatable across runs)
+**LLM weight: 25%** (strict rubric minimizes variance)
+
+</details>
+
+---
+🤖 TDD Quality Gate | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
 
             // Post as PR comment
             await github.rest.issues.createComment({
@@ -635,7 +842,10 @@ jobs:
             // Post workflow summary
             await core.summary.addRaw(report).write();
 
-            // Fail the job if score is below threshold
+            // Fail the job if score is below threshold or hard blockers exist
             if (!passed) {
-              core.setFailed(`TDD Quality Gate failed: ${compositeScore}/100 (minimum 60 required)`);
+              const reason = hardBlockers.length > 0
+                ? `TDD Quality Gate failed: ${hardBlockers.join(', ')} (hard blocker)`
+                : `TDD Quality Gate failed: ${compositeScore}/100 (minimum 60 required)`;
+              core.setFailed(reason);
             }

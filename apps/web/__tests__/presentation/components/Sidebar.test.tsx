@@ -4,6 +4,10 @@ import { Sidebar } from '@/presentation/components/Sidebar'
 import { AuthProvider } from '@/presentation/hooks/useAuth'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorage } from '@/domain/repositories/TokenStorage'
+import { AuthTokenManager } from '@/domain/repositories/AuthTokenManager'
+import { LoginUseCase } from '@/application/usecases/LoginUseCase'
+import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
+import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 
 // Mock next/navigation
 let mockPathname = '/dashboard'
@@ -48,16 +52,32 @@ function createMockTokenStorage(): jest.Mocked<TokenStorage> {
   }
 }
 
+function createMockTokenManager(): jest.Mocked<AuthTokenManager> {
+  return {
+    setAuthToken: jest.fn(),
+    clearAuthToken: jest.fn(),
+    restoreToken: jest.fn(),
+  }
+}
+
 function renderSidebar(
   authRepo?: jest.Mocked<AuthRepository>,
-  tokenStorage?: jest.Mocked<TokenStorage>
 ) {
   const repo = authRepo ?? createMockAuthRepo()
-  const storage = tokenStorage ?? createMockTokenStorage()
+  const storage = createMockTokenStorage()
+  const tokenManager = createMockTokenManager()
+  const loginUseCase = new LoginUseCase(repo)
+  const registerUseCase = new RegisterUseCase(repo)
+  const logoutUseCase = new LogoutUseCase(repo)
 
-  // Login first to have user data
   return render(
-    <AuthProvider authRepo={repo} tokenStorage={storage}>
+    <AuthProvider
+      loginUseCase={loginUseCase}
+      registerUseCase={registerUseCase}
+      logoutUseCase={logoutUseCase}
+      tokenStorage={storage}
+      tokenManager={tokenManager}
+    >
       <Sidebar />
     </AuthProvider>
   )

@@ -18,17 +18,3 @@ export function isAuthRoute(pathname: string): boolean {
   return AUTH_ROUTES.includes(pathname)
 }
 
-export function getRedirectUrl(
-  pathname: string,
-  isAuthenticated: boolean
-): string | null {
-  if (isProtectedRoute(pathname) && !isAuthenticated) {
-    return '/login'
-  }
-
-  if (isAuthRoute(pathname) && isAuthenticated) {
-    return '/dashboard'
-  }
-
-  return null
-}

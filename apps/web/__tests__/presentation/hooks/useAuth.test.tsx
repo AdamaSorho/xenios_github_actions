@@ -1,8 +1,12 @@
 import React from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { AuthProvider, useAuth } from '@/presentation/hooks/useAuth'
-import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorage } from '@/domain/repositories/TokenStorage'
+import { AuthTokenManager } from '@/domain/repositories/AuthTokenManager'
+import { LoginUseCase } from '@/application/usecases/LoginUseCase'
+import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
+import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
+import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { AuthResponse } from '@/domain/entities/AuthUser'
 
 const mockAuthResponse: AuthResponse = {
@@ -38,13 +42,31 @@ function createMockTokenStorage(): jest.Mocked<TokenStorage> {
   }
 }
 
+function createMockTokenManager(): jest.Mocked<AuthTokenManager> {
+  return {
+    setAuthToken: jest.fn(),
+    clearAuthToken: jest.fn(),
+    restoreToken: jest.fn(),
+  }
+}
+
 function createWrapper(
-  authRepo: AuthRepository,
-  tokenStorage: TokenStorage
+  mockAuthRepo: jest.Mocked<AuthRepository>,
+  tokenStorage: TokenStorage,
+  tokenManager: AuthTokenManager
 ) {
+  const loginUseCase = new LoginUseCase(mockAuthRepo)
+  const registerUseCase = new RegisterUseCase(mockAuthRepo)
+  const logoutUseCase = new LogoutUseCase(mockAuthRepo)
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <AuthProvider authRepo={authRepo} tokenStorage={tokenStorage}>
+      <AuthProvider
+        loginUseCase={loginUseCase}
+        registerUseCase={registerUseCase}
+        logoutUseCase={logoutUseCase}
+        tokenStorage={tokenStorage}
+        tokenManager={tokenManager}
+      >
         {children}
       </AuthProvider>
     )
@@ -54,15 +76,17 @@ function createWrapper(
 describe('useAuth', () => {
   let mockAuthRepo: jest.Mocked<AuthRepository>
   let mockTokenStorage: jest.Mocked<TokenStorage>
+  let mockTokenManager: jest.Mocked<AuthTokenManager>
 
   beforeEach(() => {
     mockAuthRepo = createMockAuthRepo()
     mockTokenStorage = createMockTokenStorage()
+    mockTokenManager = createMockTokenManager()
   })
 
   test('initialState_NoStoredToken_IsUnauthenticated', () => {
     const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(mockAuthRepo, mockTokenStorage),
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
 
     expect(result.current.user).toBeNull()
@@ -74,7 +98,7 @@ describe('useAuth', () => {
     mockAuthRepo.login.mockResolvedValue(mockAuthResponse)
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(mockAuthRepo, mockTokenStorage),
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
 
     await act(async () => {
@@ -89,13 +113,16 @@ describe('useAuth', () => {
     expect(mockTokenStorage.setTokens).toHaveBeenCalledWith(
       mockAuthResponse.tokens
     )
+    expect(mockTokenManager.setAuthToken).toHaveBeenCalledWith(
+      mockAuthResponse.tokens.access_token
+    )
   })
 
   test('login_InvalidCredentials_SetsError', async () => {
     mockAuthRepo.login.mockRejectedValue(new Error('Invalid credentials'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(mockAuthRepo, mockTokenStorage),
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
 
     await act(async () => {
@@ -118,7 +145,7 @@ describe('useAuth', () => {
     mockAuthRepo.register.mockResolvedValue(mockAuthResponse)
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(mockAuthRepo, mockTokenStorage),
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
 
     await act(async () => {
@@ -135,6 +162,9 @@ describe('useAuth', () => {
     expect(mockTokenStorage.setTokens).toHaveBeenCalledWith(
       mockAuthResponse.tokens
     )
+    expect(mockTokenManager.setAuthToken).toHaveBeenCalledWith(
+      mockAuthResponse.tokens.access_token
+    )
   })
 
   test('logout_ClearsUserAndTokens', async () => {
@@ -142,7 +172,7 @@ describe('useAuth', () => {
     mockAuthRepo.logout.mockResolvedValue(undefined)
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(mockAuthRepo, mockTokenStorage),
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
 
     await act(async () => {
@@ -159,13 +189,14 @@ describe('useAuth', () => {
     expect(result.current.user).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
     expect(mockTokenStorage.clearTokens).toHaveBeenCalled()
+    expect(mockTokenManager.clearAuthToken).toHaveBeenCalled()
   })
 
   test('clearError_RemovesError', async () => {
     mockAuthRepo.login.mockRejectedValue(new Error('Invalid credentials'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(mockAuthRepo, mockTokenStorage),
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
 
     await act(async () => {

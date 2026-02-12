@@ -1,4 +1,4 @@
-import { isProtectedRoute, isAuthRoute, getRedirectUrl } from '@/middleware.helpers'
+import { isProtectedRoute, isAuthRoute } from '@/middleware.helpers'
 
 describe('middleware helpers', () => {
   describe('isProtectedRoute', () => {
@@ -62,32 +62,6 @@ describe('middleware helpers', () => {
 
     test('dashboard_IsNotAuthRoute', () => {
       expect(isAuthRoute('/dashboard')).toBe(false)
-    })
-  })
-
-  describe('getRedirectUrl', () => {
-    test('protectedRoute_NoAuth_RedirectsToLogin', () => {
-      expect(getRedirectUrl('/dashboard', false)).toBe('/login')
-    })
-
-    test('authRoute_Authenticated_RedirectsToDashboard', () => {
-      expect(getRedirectUrl('/login', true)).toBe('/dashboard')
-    })
-
-    test('protectedRoute_Authenticated_ReturnsNull', () => {
-      expect(getRedirectUrl('/dashboard', true)).toBeNull()
-    })
-
-    test('authRoute_NotAuthenticated_ReturnsNull', () => {
-      expect(getRedirectUrl('/login', false)).toBeNull()
-    })
-
-    test('publicRoute_Authenticated_ReturnsNull', () => {
-      expect(getRedirectUrl('/', true)).toBeNull()
-    })
-
-    test('publicRoute_NotAuthenticated_ReturnsNull', () => {
-      expect(getRedirectUrl('/', false)).toBeNull()
     })
   })
 })

@@ -2,15 +2,17 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { isProtectedRoute, isAuthRoute } from './middleware.helpers'
 
-const TOKEN_COOKIE_NAME = 'xenios_access_token'
+/**
+ * Cookie flag name set by LocalTokenStorage when tokens are stored.
+ * This is NOT the JWT itself — it's a simple "1" flag indicating
+ * the user has an active session. Actual JWT validation happens
+ * server-side on each API call.
+ */
+const AUTH_COOKIE_NAME = 'xenios_has_token'
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value
-
-  // For localStorage-based auth, we check a simpler cookie flag
-  // The actual JWT validation happens on API calls
-  const hasToken = !!token
+  const hasToken = request.cookies.get(AUTH_COOKIE_NAME)?.value === '1'
 
   if (isProtectedRoute(pathname) && !hasToken) {
     const loginUrl = new URL('/login', request.url)

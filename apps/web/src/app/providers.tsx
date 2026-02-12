@@ -1,25 +1,29 @@
 'use client'
 
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
 import { AuthProvider } from '@/presentation/hooks/useAuth'
-import { ApiAuthRepository } from '@/infrastructure/repositories/ApiAuthRepository'
-import { LocalTokenStorage } from '@/infrastructure/auth/LocalTokenStorage'
-import { apiClient } from '@xenios/api-client'
-
-const authRepo = new ApiAuthRepository()
-const tokenStorage = new LocalTokenStorage()
-
-// Restore auth token from storage on app load
-if (typeof window !== 'undefined') {
-  const storedToken = tokenStorage.getAccessToken()
-  if (storedToken) {
-    apiClient.setAuthToken(storedToken)
-  }
-}
+import {
+  tokenStorage,
+  tokenManager,
+  loginUseCase,
+  registerUseCase,
+  logoutUseCase,
+} from '@/infrastructure/container'
 
 export function Providers({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    const storedToken = tokenStorage.getAccessToken()
+    tokenManager.restoreToken(storedToken)
+  }, [])
+
   return (
-    <AuthProvider authRepo={authRepo} tokenStorage={tokenStorage}>
+    <AuthProvider
+      loginUseCase={loginUseCase}
+      registerUseCase={registerUseCase}
+      logoutUseCase={logoutUseCase}
+      tokenStorage={tokenStorage}
+      tokenManager={tokenManager}
+    >
       {children}
     </AuthProvider>
   )

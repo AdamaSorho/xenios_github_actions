@@ -53,4 +53,25 @@ describe('LocalTokenStorage', () => {
     expect(storage.getAccessToken()).toBe('new-access')
     expect(storage.getRefreshToken()).toBe('new-refresh')
   })
+
+  test('setTokens_SetsCookieFlag', () => {
+    storage.setTokens({
+      access_token: 'access-123',
+      refresh_token: 'refresh-456',
+    })
+
+    expect(document.cookie).toContain('xenios_has_token=1')
+  })
+
+  test('clearTokens_ClearsCookieFlag', () => {
+    storage.setTokens({
+      access_token: 'access-123',
+      refresh_token: 'refresh-456',
+    })
+
+    storage.clearTokens()
+
+    // After clearing, cookie should be expired (empty or removed)
+    expect(document.cookie).not.toContain('xenios_has_token=1')
+  })
 })

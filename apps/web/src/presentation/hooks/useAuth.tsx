@@ -2,9 +2,11 @@
 
 import React, { createContext, useCallback, useContext, useState } from 'react'
 import { AuthUser, LoginCredentials, RegisterInput } from '@/domain/entities/AuthUser'
-import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorage } from '@/domain/repositories/TokenStorage'
-import { apiClient } from '@xenios/api-client'
+import { AuthTokenManager } from '@/domain/repositories/AuthTokenManager'
+import { LoginUseCase } from '@/application/usecases/LoginUseCase'
+import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
+import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 
 interface AuthContextValue {
   user: AuthUser | null
@@ -21,14 +23,20 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 interface AuthProviderProps {
   children: React.ReactNode
-  authRepo: AuthRepository
+  loginUseCase: LoginUseCase
+  registerUseCase: RegisterUseCase
+  logoutUseCase: LogoutUseCase
   tokenStorage: TokenStorage
+  tokenManager: AuthTokenManager
 }
 
 export function AuthProvider({
   children,
-  authRepo,
+  loginUseCase,
+  registerUseCase,
+  logoutUseCase,
   tokenStorage,
+  tokenManager,
 }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -39,9 +47,9 @@ export function AuthProvider({
       setIsLoading(true)
       setError(null)
       try {
-        const response = await authRepo.login(credentials)
+        const response = await loginUseCase.execute(credentials)
         tokenStorage.setTokens(response.tokens)
-        apiClient.setAuthToken(response.tokens.access_token)
+        tokenManager.setAuthToken(response.tokens.access_token)
         setUser(response.user)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Login failed'
@@ -51,7 +59,7 @@ export function AuthProvider({
         setIsLoading(false)
       }
     },
-    [authRepo, tokenStorage]
+    [loginUseCase, tokenStorage, tokenManager]
   )
 
   const register = useCallback(
@@ -59,9 +67,9 @@ export function AuthProvider({
       setIsLoading(true)
       setError(null)
       try {
-        const response = await authRepo.register(input)
+        const response = await registerUseCase.execute(input)
         tokenStorage.setTokens(response.tokens)
-        apiClient.setAuthToken(response.tokens.access_token)
+        tokenManager.setAuthToken(response.tokens.access_token)
         setUser(response.user)
       } catch (err) {
         const message =
@@ -72,23 +80,23 @@ export function AuthProvider({
         setIsLoading(false)
       }
     },
-    [authRepo, tokenStorage]
+    [registerUseCase, tokenStorage, tokenManager]
   )
 
   const logout = useCallback(async () => {
     setIsLoading(true)
     try {
-      await authRepo.logout()
+      await logoutUseCase.execute()
     } catch {
       // Logout should clear local state even if the API call fails
     } finally {
       tokenStorage.clearTokens()
-      apiClient.clearAuthToken()
+      tokenManager.clearAuthToken()
       setUser(null)
       setError(null)
       setIsLoading(false)
     }
-  }, [authRepo, tokenStorage])
+  }, [logoutUseCase, tokenStorage, tokenManager])
 
   const clearError = useCallback(() => {
     setError(null)

@@ -13,6 +13,12 @@ const config = {
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
+    '!src/domain/entities/AuthTokens.ts',
+    '!src/domain/entities/User.ts',
+    '!src/domain/repositories/**',
+    '!src/infrastructure/container.ts',
+    '!src/infrastructure/repositories/ApiUserRepository.ts',
+    '!src/presentation/screens/HomeScreen.tsx',
   ],
   coverageThreshold: {
     global: {

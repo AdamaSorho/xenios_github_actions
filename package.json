@@ -17,6 +17,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
+    "babel-plugin-module-resolver": "^5.0.2",
     "prettier": "^3.2.0",
     "turbo": "^2.3.0",
     "typescript": "^5.4.0"

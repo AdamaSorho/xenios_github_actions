@@ -1,0 +1,86 @@
+import { LoginUseCase } from '@/application/usecases/LoginUseCase'
+import { ValidationError } from '@/domain/errors/ValidationError'
+import { AuthRepository, AuthResponse } from '@/domain/repositories/AuthRepository'
+import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
+import { createMockAuthRepo, createMockTokenStorage, mockUser, mockTokens } from '../../helpers/mocks'
+
+const mockAuthResponse: AuthResponse = {
+  user: mockUser,
+  tokens: mockTokens,
+}
+
+describe('LoginUseCase', () => {
+  let useCase: LoginUseCase
+  let authRepo: jest.Mocked<AuthRepository>
+  let tokenStorage: jest.Mocked<TokenStorageRepository>
+
+  beforeEach(() => {
+    authRepo = createMockAuthRepo()
+    tokenStorage = createMockTokenStorage()
+    useCase = new LoginUseCase(authRepo, tokenStorage)
+  })
+
+  it('should login successfully with valid credentials', async () => {
+    authRepo.login.mockResolvedValue(mockAuthResponse)
+    tokenStorage.saveTokens.mockResolvedValue(undefined)
+
+    const result = await useCase.execute({
+      email: 'test@example.com',
+      password: 'password123',
+    })
+
+    expect(result.user).toEqual(mockUser)
+    expect(result.accessToken).toBe('access-token-123')
+    expect(authRepo.login).toHaveBeenCalledWith({
+      email: 'test@example.com',
+      password: 'password123',
+    })
+    expect(tokenStorage.saveTokens).toHaveBeenCalledWith(mockTokens)
+  })
+
+  it('should throw ValidationError for empty email', async () => {
+    await expect(
+      useCase.execute({ email: '', password: 'password123' })
+    ).rejects.toThrow(ValidationError)
+  })
+
+  it('should throw ValidationError for invalid email format', async () => {
+    await expect(
+      useCase.execute({ email: 'invalid', password: 'password123' })
+    ).rejects.toThrow(ValidationError)
+  })
+
+  it('should throw ValidationError for empty password', async () => {
+    await expect(
+      useCase.execute({ email: 'test@example.com', password: '' })
+    ).rejects.toThrow(ValidationError)
+  })
+
+  it('should not call authRepo when validation fails', async () => {
+    try {
+      await useCase.execute({ email: '', password: '' })
+    } catch {
+      // expected
+    }
+    expect(authRepo.login).not.toHaveBeenCalled()
+    expect(tokenStorage.saveTokens).not.toHaveBeenCalled()
+  })
+
+  it('should propagate auth repo errors', async () => {
+    authRepo.login.mockRejectedValue(new Error('Invalid credentials'))
+
+    await expect(
+      useCase.execute({ email: 'test@example.com', password: 'password123' })
+    ).rejects.toThrow('Invalid credentials')
+  })
+
+  it('should include validation errors in ValidationError', async () => {
+    try {
+      await useCase.execute({ email: '', password: '' })
+    } catch (error) {
+      expect(error).toBeInstanceOf(ValidationError)
+      expect((error as ValidationError).errors).toContain('Email is required')
+      expect((error as ValidationError).errors).toContain('Password is required')
+    }
+  })
+})

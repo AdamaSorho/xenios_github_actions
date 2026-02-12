@@ -186,6 +186,6 @@ jobs:
             - Fix everything you can, document anything you can't
             - ALWAYS commit and push your changes
           claude_args: |
-            --max-turns 100
+            --max-turns 200
             --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch

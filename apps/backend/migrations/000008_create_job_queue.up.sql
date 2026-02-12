@@ -38,9 +38,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     failed_at TIMESTAMPTZ,
-    retry_after TIMESTAMPTZ,
-    locked_by UUID,
-    locked_at TIMESTAMPTZ
+    retry_after TIMESTAMPTZ
 );
 
 -- Index for worker polling: find available jobs efficiently
@@ -55,6 +53,13 @@ CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs (type);
 
 -- Enable Row Level Security
 ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
+
+-- RLS policy: allow the service role (application user) full access to jobs
+DROP POLICY IF EXISTS jobs_service_all ON jobs;
+CREATE POLICY jobs_service_all ON jobs
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
 
 -- Dead letter queue table for permanently failed jobs
 CREATE TABLE IF NOT EXISTS jobs_dead_letter (
@@ -75,19 +80,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_failed_at ON jobs_dead_letter (f
 -- Enable Row Level Security
 ALTER TABLE jobs_dead_letter ENABLE ROW LEVEL SECURITY;
 
--- Events audit table for job lifecycle tracking
-CREATE TABLE IF NOT EXISTS events_audit (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_type TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id UUID NOT NULL,
-    payload JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Index for audit trail queries
-CREATE INDEX IF NOT EXISTS idx_events_audit_entity ON events_audit (entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_events_audit_type ON events_audit (event_type);
-
--- Enable Row Level Security
-ALTER TABLE events_audit ENABLE ROW LEVEL SECURITY;
+-- RLS policy: allow the service role (application user) full access to dead letter queue
+DROP POLICY IF EXISTS jobs_dead_letter_service_all ON jobs_dead_letter;
+CREATE POLICY jobs_dead_letter_service_all ON jobs_dead_letter
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);

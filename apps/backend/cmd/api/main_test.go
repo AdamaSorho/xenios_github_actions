@@ -558,6 +558,66 @@ func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
 	}
 }
 
+func TestSetupJobQueue_ReturnsHandlerAndWorker(t *testing.T) {
+	// Create a pool with an unreachable database (lazy connection)
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	queueHandler, w := setupJobQueue(pool)
+
+	if queueHandler == nil {
+		t.Error("expected non-nil QueueHandler")
+	}
+	if w == nil {
+		t.Error("expected non-nil Worker")
+	}
+	if !w.IsRunning() {
+		t.Error("expected worker to be running after setup")
+	}
+
+	w.Stop()
+}
+
+func TestSetupJobQueue_RegistersAllJobTypes(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	_, w := setupJobQueue(pool)
+	defer w.Stop()
+
+	types := w.RegisteredJobTypes()
+	if len(types) != 6 {
+		t.Errorf("expected 6 registered job types, got %d", len(types))
+	}
+}
+
+func TestSetupJobQueue_WorkerCanBeStopped(t *testing.T) {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+	defer pool.Close()
+
+	_, w := setupJobQueue(pool)
+	if !w.IsRunning() {
+		t.Error("expected worker to be running")
+	}
+
+	w.Stop()
+	if w.IsRunning() {
+		t.Error("expected worker to be stopped")
+	}
+}
+
 func TestWireHealthHandler_ReturnsHandlerAndCleanup(t *testing.T) {
 	// Arrange - create a pool with an unreachable database
 	// The pool itself is created successfully; it's lazy and won't connect until used

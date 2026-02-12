@@ -26,7 +26,7 @@ func (m *mockEnqueueJobUseCase) Execute(ctx context.Context, jobType entities.Jo
 	return nil, nil
 }
 
-// mockGetQueueStatusUseCase implements GetQueueStatusUseCaseInterface for testing.
+// mockGetQueueStatusUseCase implements GetQueueStatusUseCase for testing.
 type mockGetQueueStatusUseCase struct {
 	executeFunc func(ctx context.Context) (*entities.QueueStatus, error)
 }

@@ -1,5 +1,6 @@
--- Drop audit table
-DROP TABLE IF EXISTS events_audit;
+-- Drop RLS policies
+DROP POLICY IF EXISTS jobs_dead_letter_service_all ON jobs_dead_letter;
+DROP POLICY IF EXISTS jobs_service_all ON jobs;
 
 -- Drop dead letter queue table
 DROP TABLE IF EXISTS jobs_dead_letter;

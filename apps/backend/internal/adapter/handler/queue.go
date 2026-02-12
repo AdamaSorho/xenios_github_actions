@@ -18,7 +18,7 @@ type EnqueueJobUseCase interface {
 }
 
 // GetQueueStatusUseCase defines the interface for getting queue status.
-type GetQueueStatusUseCaseInterface interface {
+type GetQueueStatusUseCase interface {
 	Execute(ctx context.Context) (*entities.QueueStatus, error)
 }
 
@@ -29,11 +29,11 @@ type GetQueueStatusUseCaseInterface interface {
 // add auth middleware before production deployment.
 type QueueHandler struct {
 	enqueueUseCase   EnqueueJobUseCase
-	getStatusUseCase GetQueueStatusUseCaseInterface
+	getStatusUseCase GetQueueStatusUseCase
 }
 
 // NewQueueHandler creates a new QueueHandler.
-func NewQueueHandler(enqueueUseCase EnqueueJobUseCase, getStatusUseCase GetQueueStatusUseCaseInterface) *QueueHandler {
+func NewQueueHandler(enqueueUseCase EnqueueJobUseCase, getStatusUseCase GetQueueStatusUseCase) *QueueHandler {
 	return &QueueHandler{
 		enqueueUseCase:   enqueueUseCase,
 		getStatusUseCase: getStatusUseCase,

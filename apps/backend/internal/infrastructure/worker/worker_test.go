@@ -327,9 +327,10 @@ func TestWorker_ContextCancellation_StopsWorker(t *testing.T) {
 	// Give the worker time to notice the cancellation
 	time.Sleep(200 * time.Millisecond)
 
-	// Worker loop exits but running flag may still be true
-	// since context cancellation doesn't call Stop()
-	// This tests that the poll loop correctly exits on context cancellation
+	// Worker loop exits and running flag is reset to false
+	if w.IsRunning() {
+		t.Error("expected worker to not be running after context cancellation")
+	}
 }
 
 func TestWorker_UnregisteredJobType_FailsJob(t *testing.T) {
@@ -403,6 +404,33 @@ func TestWorker_DequeueError_ContinuesPolling(t *testing.T) {
 	if errorCount < 2 {
 		t.Errorf("expected at least 2 dequeue errors, got %d", errorCount)
 	}
+}
+
+func TestWorker_ContextCancellation_AllowsRestart(t *testing.T) {
+	mock := &mockJobQueue{}
+	w := NewWorker(mock, 50*time.Millisecond, time.Minute)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	w.Start(ctx)
+
+	if !w.IsRunning() {
+		t.Error("expected worker to be running")
+	}
+
+	cancel()
+	time.Sleep(200 * time.Millisecond)
+
+	if w.IsRunning() {
+		t.Error("expected worker to not be running after context cancellation")
+	}
+
+	// Should be able to restart after context cancellation
+	ctx2 := context.Background()
+	w.Start(ctx2)
+	if !w.IsRunning() {
+		t.Error("expected worker to be running after restart")
+	}
+	w.Stop()
 }
 
 func TestWorker_IsRunning_InitiallyFalse(t *testing.T) {

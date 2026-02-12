@@ -101,6 +101,11 @@ func (w *Worker) IsRunning() bool {
 
 func (w *Worker) pollLoop(ctx context.Context) {
 	defer w.wg.Done()
+	defer func() {
+		w.mu.Lock()
+		w.running = false
+		w.mu.Unlock()
+	}()
 
 	log.Println("Worker started, polling for jobs...")
 

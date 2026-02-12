@@ -13,11 +13,14 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
     "@xenios/api-client": "*",
     "@xenios/shared-types": "*",
+    "lucide-react": "^0.563.0",
     "next": "^16.1.2",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

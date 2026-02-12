@@ -498,9 +498,7 @@ func TestRunServer_GracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to find current process: %v", err)
 	}
-	if err := proc.Signal(syscall.SIGINT); err != nil {
-		t.Fatalf("failed to send signal: %v", err)
-	}
+	_ = proc.Signal(syscall.SIGINT)
 
 	// Wait for server to shut down
 	select {

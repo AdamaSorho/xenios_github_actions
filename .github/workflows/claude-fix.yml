@@ -1,12 +1,15 @@
-name: Claude Bug Fix
+name: Claude Fix
 
 on:
-  issues:
-    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
-  fix-bug:
-    if: github.event.label.name == 'claude-fix'
+  fix-pr:
+    if: |
+      contains(github.event.comment.body, '@claude-fix')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,8 +18,130 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Get PR info and parse command
+        id: pr-info
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+
+            // Determine PR number
+            let prNumber;
+            if (context.eventName === 'issue_comment' && context.payload.issue.pull_request) {
+              prNumber = context.payload.issue.number;
+            } else if (context.eventName === 'pull_request_review_comment') {
+              prNumber = context.payload.pull_request.number;
+            } else {
+              core.setFailed('This command only works on pull requests');
+              return;
+            }
+
+            // Get PR branch
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            // Parse which feedback to fix
+            const lowerComment = comment.toLowerCase();
+            const fixTDD = lowerComment.includes('tdd quality gate report');
+            const fixReview = lowerComment.includes('claude code review');
+            const fixConflicts = lowerComment.includes('conflicts');
+
+            // If conflicts mode, skip feedback fetching
+            if (fixConflicts) {
+              core.setOutput('branch', pr.head.ref);
+              core.setOutput('base_branch', pr.base.ref);
+              core.setOutput('pr_number', prNumber.toString());
+              core.setOutput('target', 'conflicts');
+              core.setOutput('tdd_report', '');
+              core.setOutput('review_report', '');
+              return;
+            }
+
+            // Default to both if neither is specified (just "@claude-fix" alone)
+            const targetTDD = fixTDD || (!fixTDD && !fixReview);
+            const targetReview = fixReview || (!fixTDD && !fixReview);
+
+            // Get all PR comments to find the relevant feedback
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100
+            });
+
+            // Find the LAST TDD Quality Gate Report
+            let tddReport = '';
+            if (targetTDD) {
+              const tddComments = comments.filter(c => c.body.includes('TDD Quality Gate Report'));
+              if (tddComments.length > 0) {
+                tddReport = tddComments[tddComments.length - 1].body;
+              }
+            }
+
+            // Find the LAST Claude Code Review
+            let reviewReport = '';
+            if (targetReview) {
+              const reviewComments = comments.filter(c => c.body.includes('Claude Code Review'));
+              if (reviewComments.length > 0) {
+                reviewReport = reviewComments[reviewComments.length - 1].body;
+              }
+            }
+
+            // Build a target description
+            let target = '';
+            if (targetTDD && targetReview) target = 'TDD Quality Gate Report AND Claude Code Review';
+            else if (targetTDD) target = 'TDD Quality Gate Report';
+            else target = 'Claude Code Review';
+
+            core.setOutput('branch', pr.head.ref);
+            core.setOutput('base_branch', pr.base.ref);
+            core.setOutput('pr_number', prNumber.toString());
+            core.setOutput('target', target);
+            core.setOutput('tdd_report', tddReport);
+            core.setOutput('review_report', reviewReport);
+
+      - name: Checkout PR branch
         uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr-info.outputs.branch }}
+          token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Detect merge conflicts
+        id: conflict-check
+        if: steps.pr-info.outputs.target == 'conflicts'
+        run: |
+          BASE_BRANCH="${{ steps.pr-info.outputs.base_branch }}"
+          git fetch origin "$BASE_BRANCH"
+
+          # Check if branch is already up to date
+          if git merge-base --is-ancestor "origin/$BASE_BRANCH" HEAD; then
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+            echo "conflict_files=" >> $GITHUB_OUTPUT
+            echo "Branch is already up to date with $BASE_BRANCH"
+          else
+            # Save current HEAD to reset back
+            ORIG_HEAD=$(git rev-parse HEAD)
+
+            # Attempt merge to detect conflicts
+            if git merge --no-commit --no-ff "origin/$BASE_BRANCH" 2>/dev/null; then
+              # Merge succeeded (no conflicts) - reset to original state
+              git reset --hard "$ORIG_HEAD"
+              echo "has_conflicts=false" >> $GITHUB_OUTPUT
+              echo "conflict_files=" >> $GITHUB_OUTPUT
+              echo "No conflicts detected - clean merge possible"
+            else
+              # Conflicts detected - capture file list
+              CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+              git merge --abort 2>/dev/null || git reset --hard "$ORIG_HEAD"
+              echo "has_conflicts=true" >> $GITHUB_OUTPUT
+              echo "conflict_files=$CONFLICTS" >> $GITHUB_OUTPUT
+              echo "Conflicts detected in: $CONFLICTS"
+            fi
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -37,64 +162,159 @@ jobs:
           git config --global user.name "Claude"
           git config --global user.email "claude[bot]@users.noreply.github.com"
 
-      - name: Claude Fixes Bug
+      - name: Claude Fixes PR
+        if: steps.pr-info.outputs.target != 'conflicts'
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TDD_REPORT: ${{ steps.pr-info.outputs.tdd_report }}
+          REVIEW_REPORT: ${{ steps.pr-info.outputs.review_report }}
         with:
-          # Using Claude Max subscription via OAuth token (flat $200/month)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: '@claude-fix'
           allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
-            BUG REPORT: #${{ github.event.issue.number }}
-            TITLE: ${{ github.event.issue.title }}
+            You are an autonomous code fixer for the Xenios platform.
+            Branch: ${{ steps.pr-info.outputs.branch }}
+            PR: #${{ steps.pr-info.outputs.pr_number }}
+            Target: ${{ steps.pr-info.outputs.target }}
 
-            You are fixing a bug in the Xenios platform.
+            ## YOUR MISSION
 
-            ## Instructions
+            Fix ALL issues identified in the feedback below. You MUST:
+            1. Read the feedback carefully
+            2. Read the relevant source and test files
+            3. Make code changes to address every issue
+            4. Run tests to verify your fixes
+            5. Commit with `git add <specific files>` then `git commit -m "[Fix] <what was fixed>"`
+            6. Push with `git push origin ${{ steps.pr-info.outputs.branch }}`
 
-            1. READ the bug report thoroughly
-            2. REPRODUCE the issue to understand it
-            3. IDENTIFY the root cause (don't just fix symptoms)
-            4. WRITE a failing test that captures the bug
-            5. FIX the bug with minimal changes
-            6. VERIFY the test passes
-            7. RUN the full test suite to check for regressions
-            8. CREATE a PR with:
-               - Root cause explanation
-               - Fix description
-               - Test that verifies the fix
+            NEVER respond with only text. ALWAYS make code changes, commit, and push.
 
-            ## Architecture Rules (Must Follow)
+            ## FEEDBACK TO FIX
 
-            - Dependencies flow INWARD only
-            - Domain layer has NO external dependencies
-            - Backend is the ONLY app that accesses the database
-            - Web and Mobile call Backend API, never database directly
-            - No ORMs allowed in Backend (use pgx/raw SQL only)
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '### TDD Quality Gate Report' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && 'Read the TDD_REPORT environment variable for the full report. Key areas to fix:' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Hard blockers (build failures, SQL injection)' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Low test coverage (target 80%+)' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Missing test-before-code pattern' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Poor test:code ratio (add more tests)' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Architecture violations' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Lint/vet/security issues' || '' }}
 
-            ## Bug Fix Best Practices
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '### Claude Code Review' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && 'Read the REVIEW_REPORT environment variable for the full review. Fix:' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- All critical issues listed under "Critical Issues (must fix)"' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Any category scored 1/5 or 2/5' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Security vulnerabilities' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Database rule violations' || '' }}
 
-            - Fix the root cause, not just the symptom
-            - Add tests to prevent regression
-            - Keep changes focused and minimal
-            - Document why the bug occurred
+            ## HOW TO READ THE FEEDBACK
+
+            The full feedback reports are in environment variables:
+            - TDD report: Run `echo "$TDD_REPORT"` to see it
+            - Review report: Run `echo "$REVIEW_REPORT"` to see it
+
+            Also run `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to see all PR comments for additional context.
+
+            ## Architecture Rules
+
+            - Clean Architecture: Domain -> Application -> Infrastructure -> Presentation
+            - Backend (Go) accesses database; Web/Mobile call Backend API only
+            - No ORMs - raw SQL with pgx/sqlx only
+            - TDD: write tests first, 80% coverage minimum
+            - Parameterized queries only ($1, $2) - no string interpolation in SQL
 
             ## IMPORTANT: Non-Interactive Mode
 
-            You are running in a CI environment with NO human interaction.
-            - NEVER stop to ask for clarification - make reasonable assumptions
-            - ALWAYS document assumptions in the PR description
-            - If you cannot reproduce the bug, document what you tried and
-              implement a best-effort fix based on the bug report
+            You are running in CI with NO human interaction.
+            - NEVER stop to ask for clarification
+            - Fix everything you can, document anything you can't
+            - ALWAYS commit and push your changes
           claude_args: |
-            --max-turns 30
+            --max-turns 200
             --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
 
-      - name: Add fix label
-        if: success()
-        run: |
-          gh issue edit ${{ github.event.issue.number }} --add-label "fix-complete"
+      - name: Claude Resolves Conflicts
+        if: steps.pr-info.outputs.target == 'conflicts'
+        uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_CONFLICTS: ${{ steps.conflict-check.outputs.has_conflicts }}
+          CONFLICT_FILES: ${{ steps.conflict-check.outputs.conflict_files }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: '@claude-fix'
+          allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
+          prompt: |
+            You are an autonomous merge conflict resolver for the Xenios platform.
+            Branch: ${{ steps.pr-info.outputs.branch }}
+            Base branch: ${{ steps.pr-info.outputs.base_branch }}
+            PR: #${{ steps.pr-info.outputs.pr_number }}
+            Has conflicts: ${{ steps.conflict-check.outputs.has_conflicts }}
+            Conflicting files: ${{ steps.conflict-check.outputs.conflict_files }}
+
+            ## YOUR MISSION
+
+            Resolve ALL merge conflicts on this PR branch. You MUST:
+
+            1. **Merge the base branch**:
+               ```bash
+               git fetch origin ${{ steps.pr-info.outputs.base_branch }}
+               git merge origin/${{ steps.pr-info.outputs.base_branch }}
+               ```
+               This will create conflict markers in files.
+
+            2. **For each conflicting file**:
+               - Read the file with conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+               - Understand what BOTH sides are doing
+               - Resolve by keeping the correct code from both sides
+               - Use Edit tool to replace the conflicted sections (remove ALL markers)
+               - NEVER blindly pick one side - merge the intent of both changes
+
+            3. **Stage and complete the merge**:
+               ```bash
+               git add <resolved files>
+               git commit -m "[Fix] Resolve merge conflicts with ${{ steps.pr-info.outputs.base_branch }}"
+               ```
+
+            4. **Run tests** to verify nothing broke:
+               - Go: `cd apps/backend && go build ./... && go test ./...`
+               - Web: `cd apps/web && npm run build` (if applicable)
+
+            5. **Push**:
+               ```bash
+               git push origin ${{ steps.pr-info.outputs.branch }}
+               ```
+
+            ## CONFLICT RESOLUTION RULES
+
+            - NEVER use `git checkout --ours` or `git checkout --theirs` blindly
+            - ALWAYS read both versions and understand the intent
+            - Preserve ALL functionality from both branches
+            - If the base branch added new files/functions, keep them
+            - If the PR branch modified something the base branch also modified, merge both changes
+            - Maintain Clean Architecture principles during resolution
+            - After resolving, ensure NO conflict markers remain (`<<<<<<<`, `=======`, `>>>>>>>`)
+
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in CI with NO human interaction.
+            - NEVER stop to ask for clarification
+            - Make the best resolution decision based on code context
+            - ALWAYS complete the merge, commit, and push
+          claude_args: |
+            --max-turns 100
+            --model claude-opus-4-6
+            --allowedTools Bash,Edit,Read,Write,Glob,Grep
+
+      - name: Verify no conflict markers remain
+        if: steps.pr-info.outputs.target == 'conflicts'
+        run: |
+          # Check for leftover conflict markers in source files
+          if grep -rn "^<<<<<<< \|^=======$\|^>>>>>>> " --include="*.go" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.sql" . 2>/dev/null; then
+            echo "::error::Conflict markers still present in source files!"
+            exit 1
+          fi
+          echo "No conflict markers found - resolution complete"

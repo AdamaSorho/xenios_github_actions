@@ -13,75 +13,21 @@ on:
 jobs:
   claude-response:
     if: |
-      contains(github.event.comment.body, '@claude') ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (contains(github.event.comment.body, '@claude') && !contains(github.event.comment.body, '@claude-fix') && !contains(github.event.comment.body, '@claude-architect') && !contains(github.event.comment.body, '@claude-review')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && !contains(github.event.review.body, '@claude-fix')) ||
       (github.event_name == 'issues' && github.event.action == 'assigned' && github.event.assignee.login == 'claude-bot')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
       issues: write
       id-token: write
 
     steps:
-      - name: Get PR branch
-        id: pr-info
-        uses: actions/github-script@v8
-        with:
-          script: |
-            let branch = '';
-            let prNumber = '';
-
-            // For issue_comment on a PR
-            if (context.eventName === 'issue_comment' && context.payload.issue.pull_request) {
-              const { data: pr } = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.payload.issue.number
-              });
-              branch = pr.head.ref;
-              prNumber = pr.number;
-            }
-            // For pull_request_review_comment
-            else if (context.eventName === 'pull_request_review_comment') {
-              branch = context.payload.pull_request.head.ref;
-              prNumber = context.payload.pull_request.number;
-            }
-            // For pull_request_review
-            else if (context.eventName === 'pull_request_review') {
-              branch = context.payload.pull_request.head.ref;
-              prNumber = context.payload.pull_request.number;
-            }
-
-            core.setOutput('branch', branch);
-            core.setOutput('pr_number', prNumber);
-            core.setOutput('is_pr', branch ? 'true' : 'false');
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ steps.pr-info.outputs.branch || github.ref }}
-          token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Configure git identity
-        run: |
-          git config --global user.name "Claude"
-          git config --global user.email "claude[bot]@users.noreply.github.com"
 
       - name: Claude Assistant Response
         uses: anthropics/claude-code-action@v1
@@ -92,45 +38,36 @@ jobs:
           trigger_phrase: '@claude'
           allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
-            You are an autonomous code assistant for the Xenios platform.
-            You are on branch: ${{ steps.pr-info.outputs.branch || 'main' }}
-            PR number: ${{ steps.pr-info.outputs.pr_number || 'N/A' }}
+            You are a helpful assistant for the Xenios platform. You answer questions about the codebase, architecture, and implementation details.
 
-            ## CRITICAL BEHAVIOR RULE
+            ## IMPORTANT: You are an ASSISTANT only
 
-            You are running in CI with NO human interaction. You MUST take action autonomously.
+            - You MUST NOT make code changes, create commits, or push to any branch
+            - You MUST NOT use Edit or Write tools
+            - You only READ code and ANSWER questions
+            - If someone asks you to fix code, tell them to use `@claude-fix` instead
 
-            When the user's message contains ANY of these keywords: "fix", "update", "change", "improve",
-            "address", "resolve", "handle", "feedback", "TDD", "failing", "failed", "broken", "error",
-            "coverage", "tests", "review" — you MUST:
+            ## What you CAN do
 
-            1. **Investigate**: Read ALL PR comments (TDD reports, review feedback) using `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to understand what needs fixing
-            2. **Read code**: Read the relevant source and test files that need changes
-            3. **Fix**: Make the actual code changes using Edit/Write tools
-            4. **Test**: Run `go test ./apps/backend/...` for Go or `npm test` for TypeScript
-            5. **Commit**: `git add <specific files>` then `git commit -m "[Fix] <what was fixed>"`
-            6. **Push**: `git push origin ${{ steps.pr-info.outputs.branch }}`
-
-            NEVER respond with only text when action is needed. ALWAYS make code changes, commit, and push.
-            If you're unsure what to fix, read the PR comments — the TDD report and review comments tell you exactly what's wrong.
-
-            ## Detecting What to Fix
-
-            **If the message mentions "fix", "TDD", "feedback", "review", or "failing":**
-            1. Run `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to read ALL comments
-            2. Look for the "TDD Quality Gate Report" comment — it lists exact issues (missing tests, low coverage, architecture violations)
-            3. Look for the "Claude Code Review" comment — it lists critical issues and suggestions
-            4. Fix EVERYTHING flagged in those reports
-            5. Commit and push
-
-            **If the message is a direct question (no action keywords):**
-            - Read relevant code and answer concisely
+            - Read and explain code
+            - Answer architecture questions
+            - Explain how features work
+            - Suggest approaches (without implementing them)
+            - Analyze test coverage or code quality
+            - Review specific files or functions
 
             ## Context
+
             Monorepo: Go backend (apps/backend), Next.js web (apps/web), React Native mobile (apps/mobile).
             Architecture: Clean Architecture, dependencies flow inward only, no ORMs, raw SQL with pgx.
             TDD required: write tests first, 80% coverage minimum.
+
+            ## IMPORTANT: Non-Interactive Mode
+
+            You are running in a CI environment with NO human interaction.
+            - NEVER stop to ask for clarification - answer with what you know
+            - If unsure, state your assumptions clearly
           claude_args: |
-            --max-turns 50
+            --max-turns 15
             --model claude-opus-4-6
-            --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
+            --allowedTools Bash,Read,Glob,Grep,WebSearch,WebFetch

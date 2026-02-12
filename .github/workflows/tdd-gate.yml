@@ -748,88 +748,95 @@ jobs:
               ? `\n### 🚫 Hard Blockers (auto-fail)\n${hardBlockers.map(b => '- ❌ ' + b).join('\n')}\n`
               : '';
 
+            // Build deterministic checks table rows
+            const checksRows = [
+              `| **Go Build** | ${statusIcon(goBuild)} | ${goBuild === 'passed' ? 'Compiles successfully' : goBuild === 'failed' ? '**BUILD FAILED** (hard blocker)' : 'Skipped'} |`,
+              `| **Web Build** | ${statusIcon(webBuild)} | ${webBuild === 'passed' ? 'Builds successfully' : 'Skipped or no build script'} |`,
+              `| **Web TypeScript** | ${statusIcon(webTypecheck)} | ${webTypecheck === 'passed' ? 'No type errors' : 'Skipped or has type errors'} |`,
+              `| **Go Vet** | ${issueIcon(goVetIssues)} | ${goVetIssues === 0 ? 'No issues' : goVetIssues + ' issue(s)'} |`,
+              `| **Go Lint** | ${issueIcon(goLintIssues)} | ${goLintIssues === 0 ? 'Clean' : goLintIssues + ' issue(s)'} |`,
+              `| **Web ESLint** | ${issueIcon(webEslintIssues)} | ${webEslintIssues === 0 ? 'Clean' : 'Has lint issues'} |`,
+              `| **Go Security (gosec)** | ${issueIcon(goSecurityIssues)} | ${goSecurityIssues === 0 ? 'No findings' : goSecurityIssues + ' finding(s)'} |`,
+              `| **SQL Injection** | ${sqlInjectionViolations === 0 ? '✅ 0' : '❌ ' + sqlInjectionViolations} | ${sqlInjectionViolations === 0 ? 'No unsafe patterns' : '**Pattern detected** (hard blocker)'} |`,
+              `| **npm Audit (high)** | ${npmAuditHigh === 0 ? '✅ 0' : '⚠️ ' + npmAuditHigh} | ${npmAuditHigh === 0 ? 'No high vulnerabilities' : npmAuditHigh + ' high severity'} |`
+            ].join('\n');
+
             // Build report
-            const report = `## 📊 TDD Quality Gate Report
-
-${gradeEmoji} **Grade: ${grade}** | **Score: ${compositeScore}/100** | ${verdict}
-${blockerSection}
----
-
-### Deterministic Checks
-
-| Check | Status | Notes |
-|-------|--------|-------|
-| **Go Build** | ${statusIcon(goBuild)} | ${goBuild === 'passed' ? 'Compiles successfully' : goBuild === 'failed' ? '**BUILD FAILED** (hard blocker)' : 'Skipped'} |
-| **Web Build** | ${statusIcon(webBuild)} | ${webBuild === 'passed' ? 'Builds successfully' : 'Skipped or no build script'} |
-| **Web TypeScript** | ${statusIcon(webTypecheck)} | ${webTypecheck === 'passed' ? 'No type errors' : 'Skipped or has type errors'} |
-| **Go Vet** | ${issueIcon(goVetIssues)} | ${goVetIssues === 0 ? 'No issues' : goVetIssues + ' issue(s)'} |
-| **Go Lint** | ${issueIcon(goLintIssues)} | ${goLintIssues === 0 ? 'Clean' : goLintIssues + ' issue(s)'} |
-| **Web ESLint** | ${issueIcon(webEslintIssues)} | ${webEslintIssues === 0 ? 'Clean' : 'Has lint issues'} |
-| **Go Security (gosec)** | ${issueIcon(goSecurityIssues)} | ${goSecurityIssues === 0 ? 'No findings' : goSecurityIssues + ' finding(s)'} |
-| **SQL Injection** | ${sqlInjectionViolations === 0 ? '✅ 0' : '❌ ' + sqlInjectionViolations} | ${sqlInjectionViolations === 0 ? 'No unsafe patterns' : '**Pattern detected** (hard blocker)'} |
-| **npm Audit (high)** | ${npmAuditHigh === 0 ? '✅ 0' : '⚠️ ' + npmAuditHigh} | ${npmAuditHigh === 0 ? 'No high vulnerabilities' : npmAuditHigh + ' high severity'} |
-
----
-
-### TDD Scores (${deterministicTotal}/75)
-
-| Component | Score | Details | Bar |
-|-----------|-------|---------|-----|
-| **Test Coverage** | **${coverageScore}/30** | Avg: ${process.env.AVG_COVERAGE}% (Go: ${process.env.GO_COVERAGE}%, Web: ${process.env.WEB_COVERAGE}%, Mobile: ${process.env.MOBILE_COVERAGE}%) | ${progressBar(coverageScore, 30)} |
-| **Test-Before-Code** | **${testFirstScore}/20** | ${process.env.TEST_FIRST_GOOD}/${process.env.TEST_FIRST_PAIRS} pairs test-first (${process.env.TEST_FIRST_RATIO}%) | ${progressBar(testFirstScore, 20)} |
-| **Test:Code Ratio** | **${testCodeScore}/15** | ${process.env.TEST_LINES} test lines / ${process.env.IMPL_LINES} impl lines (${process.env.TEST_CODE_RATIO}x) | ${progressBar(testCodeScore, 15)} |
-| **Clean Architecture** | **${archScore}/10** | ${process.env.ARCH_VIOLATIONS} violations | ${progressBar(archScore, 10)} |
-
-### LLM Assessment Scores (${llmTotal}/25)
-
-| Component | Score | Details |
-|-----------|-------|---------|
-| **Edge Case Coverage** | **${edgeCaseScore}/15** | Boundary: ${llmDetails.boundary_details || 'N/A'} |
-| **Error Handling** | **${errorHandlingScore}/10** | ${llmDetails.error_path_details || 'N/A'} |
-
-<details>
-<summary>📋 Detailed LLM Assessment</summary>
-
-**Boundary Tests**: ${llmDetails.boundary_details || 'Not assessed'}
-**Input Validation**: ${llmDetails.validation_details || 'Not assessed'}
-**Concurrency**: ${llmDetails.concurrency_details || 'Not assessed'}
-**Error Paths**: ${llmDetails.error_path_details || 'Not assessed'}
-**Error Propagation**: ${llmDetails.error_propagation_details || 'Not assessed'}
-
-</details>
-
----
-
-### Scoring Rubric
-
-<details>
-<summary>How is this score calculated?</summary>
-
-**Hard Blockers (auto-fail regardless of score):**
-- Go build failure
-- SQL injection patterns detected
-
-**Scored Components (100 points):**
-
-| Component | Max | Method | Rubric |
-|-----------|-----|--------|--------|
-| Test Coverage | 30 | \`go test -cover\` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10, 50%+=7, 30%+=4, 20%+=2 |
-| Test-Before-Code | 20 | Git commit order analysis | 100%=20, 80%+=16, 60%+=12, 40%+=8, 20%+=4 |
-| Test:Code Ratio | 15 | Line count comparison | ≥1.5x=15, ≥1.0x=13, ≥0.7x=10, ≥0.5x=7, ≥0.3x=4 |
-| Clean Architecture | 10 | Static import analysis | 0 violations=10, 1=5, 2+=0 |
-| Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |
-| Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |
-
-**Informational checks** (reported but not scored): Go vet, golangci-lint, ESLint, gosec, npm audit, web build, TypeScript types
-
-**Passing score: 60/100** + no hard blockers
-**Deterministic weight: 75%** (repeatable across runs)
-**LLM weight: 25%** (strict rubric minimizes variance)
-
-</details>
-
----
-🤖 TDD Quality Gate | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+            const report = [
+              `## 📊 TDD Quality Gate Report`,
+              ``,
+              `${gradeEmoji} **Grade: ${grade}** | **Score: ${compositeScore}/100** | ${verdict}`,
+              blockerSection,
+              `---`,
+              ``,
+              `### Deterministic Checks`,
+              ``,
+              `| Check | Status | Notes |`,
+              `|-------|--------|-------|`,
+              checksRows,
+              ``,
+              `---`,
+              ``,
+              `### TDD Scores (${deterministicTotal}/75)`,
+              ``,
+              `| Component | Score | Details | Bar |`,
+              `|-----------|-------|---------|-----|`,
+              `| **Test Coverage** | **${coverageScore}/30** | Avg: ${process.env.AVG_COVERAGE}% (Go: ${process.env.GO_COVERAGE}%, Web: ${process.env.WEB_COVERAGE}%, Mobile: ${process.env.MOBILE_COVERAGE}%) | ${progressBar(coverageScore, 30)} |`,
+              `| **Test-Before-Code** | **${testFirstScore}/20** | ${process.env.TEST_FIRST_GOOD}/${process.env.TEST_FIRST_PAIRS} pairs test-first (${process.env.TEST_FIRST_RATIO}%) | ${progressBar(testFirstScore, 20)} |`,
+              `| **Test:Code Ratio** | **${testCodeScore}/15** | ${process.env.TEST_LINES} test lines / ${process.env.IMPL_LINES} impl lines (${process.env.TEST_CODE_RATIO}x) | ${progressBar(testCodeScore, 15)} |`,
+              `| **Clean Architecture** | **${archScore}/10** | ${process.env.ARCH_VIOLATIONS} violations | ${progressBar(archScore, 10)} |`,
+              ``,
+              `### LLM Assessment Scores (${llmTotal}/25)`,
+              ``,
+              `| Component | Score | Details |`,
+              `|-----------|-------|---------|`,
+              `| **Edge Case Coverage** | **${edgeCaseScore}/15** | Boundary: ${llmDetails.boundary_details || 'N/A'} |`,
+              `| **Error Handling** | **${errorHandlingScore}/10** | ${llmDetails.error_path_details || 'N/A'} |`,
+              ``,
+              `<details>`,
+              `<summary>📋 Detailed LLM Assessment</summary>`,
+              ``,
+              `**Boundary Tests**: ${llmDetails.boundary_details || 'Not assessed'}`,
+              `**Input Validation**: ${llmDetails.validation_details || 'Not assessed'}`,
+              `**Concurrency**: ${llmDetails.concurrency_details || 'Not assessed'}`,
+              `**Error Paths**: ${llmDetails.error_path_details || 'Not assessed'}`,
+              `**Error Propagation**: ${llmDetails.error_propagation_details || 'Not assessed'}`,
+              ``,
+              `</details>`,
+              ``,
+              `---`,
+              ``,
+              `### Scoring Rubric`,
+              ``,
+              `<details>`,
+              `<summary>How is this score calculated?</summary>`,
+              ``,
+              `**Hard Blockers (auto-fail regardless of score):**`,
+              `- Go build failure`,
+              `- SQL injection patterns detected`,
+              ``,
+              `**Scored Components (100 points):**`,
+              ``,
+              `| Component | Max | Method | Rubric |`,
+              `|-----------|-----|--------|--------|`,
+              '| Test Coverage | 30 | `go test -cover` / Jest | 95%+=30, 90%+=27, 85%+=24, 80%+=21, 70%+=15, 60%+=10, 50%+=7, 30%+=4, 20%+=2 |',
+              '| Test-Before-Code | 20 | Git commit order analysis | 100%=20, 80%+=16, 60%+=12, 40%+=8, 20%+=4 |',
+              '| Test:Code Ratio | 15 | Line count comparison | >=1.5x=15, >=1.0x=13, >=0.7x=10, >=0.5x=7, >=0.3x=4 |',
+              '| Clean Architecture | 10 | Static import analysis | 0 violations=10, 1=5, 2+=0 |',
+              '| Edge Cases (LLM) | 15 | Claude reviews test files | Boundary(5) + Validation(5) + Concurrency(5) |',
+              '| Error Handling (LLM) | 10 | Claude reviews test files | Error paths(5) + Propagation(5) |',
+              ``,
+              `**Informational checks** (reported but not scored): Go vet, golangci-lint, ESLint, gosec, npm audit, web build, TypeScript types`,
+              ``,
+              `**Passing score: 60/100** + no hard blockers`,
+              `**Deterministic weight: 75%** (repeatable across runs)`,
+              `**LLM weight: 25%** (strict rubric minimizes variance)`,
+              ``,
+              `</details>`,
+              ``,
+              `---`,
+              `🤖 TDD Quality Gate | [View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+            ].join('\n');
 
             // Post as PR comment
             await github.rest.issues.createComment({

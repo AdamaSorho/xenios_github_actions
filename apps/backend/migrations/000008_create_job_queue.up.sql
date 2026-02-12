@@ -96,7 +96,7 @@ CREATE POLICY jobs_dead_letter_service_all ON jobs_dead_letter
 -- Job events are system-generated and have no user actor.
 CREATE TABLE IF NOT EXISTS job_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_id UUID NOT NULL,
+    job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
     details JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

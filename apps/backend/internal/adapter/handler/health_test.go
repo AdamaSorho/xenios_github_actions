@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -164,5 +165,46 @@ func TestHealthHandler_Health_WithUseCase_Degraded(t *testing.T) {
 
 	if response.Uptime != "5m" {
 		t.Errorf("expected uptime '5m', got '%s'", response.Uptime)
+	}
+}
+
+// TestHealthHandler_Health_WithUseCase_Error tests the handler when the use case returns an error.
+func TestHealthHandler_Health_WithUseCase_Error(t *testing.T) {
+	mockUseCase := &mockGetHealthStatusUseCase{
+		executeFunc: func(ctx context.Context) (*entities.Health, error) {
+			return nil, errors.New("unexpected error")
+		},
+	}
+	h := NewHealthHandlerWithUseCase(mockUseCase)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	h.Health(rec, req)
+
+	// Should still return 200 with degraded status
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var response entities.Health
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Status != "degraded" {
+		t.Errorf("expected status 'degraded', got %q", response.Status)
+	}
+
+	systemCheck, exists := response.Checks["system"]
+	if !exists {
+		t.Fatal("expected 'system' check to exist on error")
+	}
+
+	if systemCheck.Status != "down" {
+		t.Errorf("expected system status 'down', got %q", systemCheck.Status)
+	}
+
+	if response.Uptime != "unknown" {
+		t.Errorf("expected uptime 'unknown', got %q", response.Uptime)
 	}
 }

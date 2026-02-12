@@ -255,9 +255,11 @@ func TestValidationError_Error_ReturnsMessage(t *testing.T) {
 }
 
 func TestValidationError_ImplementsError(t *testing.T) {
-	var err error = NewValidationError("test error")
-	if err == nil {
-		t.Error("expected non-nil error")
+	ve := NewValidationError("test error")
+	// Verify the concrete type satisfies the error interface.
+	var _ error = ve
+	if ve.Error() != "test error" {
+		t.Errorf("expected error message %q, got %q", "test error", ve.Error())
 	}
 }
 

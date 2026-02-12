@@ -7,7 +7,7 @@ import (
 )
 
 // ValidationError represents a domain validation error.
-// Handlers can use errors.As to distinguish validation errors from infrastructure errors.
+// Handlers can use errors.As to distinguish validation errors from internal errors.
 type ValidationError struct {
 	Message string
 }

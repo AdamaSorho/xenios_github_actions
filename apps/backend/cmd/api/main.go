@@ -32,20 +32,8 @@ func setupServer() (*http.Server, func()) {
 
 	// Set up health handler with optional database connectivity
 	healthHandler, pool, cleanup := setupHealthHandler()
-	versionHandler := handler.NewVersionHandler()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler.Health)
-	mux.HandleFunc("GET /version", versionHandler.Version)
-
-	// Set up job queue infrastructure if database is available
-	var jobWorker *worker.Worker
-	if pool != nil {
-		queueHandler, w := setupJobQueue(pool)
-		jobWorker = w
-		mux.HandleFunc("POST /jobs", queueHandler.EnqueueJob)
-		mux.HandleFunc("GET /jobs/status", queueHandler.GetQueueStatus)
-	}
+	mux, jobWorker := configureRoutes(healthHandler, pool)
 
 	// Compose cleanup function
 	fullCleanup := func() {
@@ -64,6 +52,27 @@ func setupServer() (*http.Server, func()) {
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}, fullCleanup
+}
+
+// configureRoutes sets up the HTTP mux with all routes.
+// If pool is non-nil, job queue endpoints are registered.
+func configureRoutes(healthHandler *handler.HealthHandler, pool *pgxpool.Pool) (*http.ServeMux, *worker.Worker) {
+	versionHandler := handler.NewVersionHandler()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", healthHandler.Health)
+	mux.HandleFunc("GET /version", versionHandler.Version)
+
+	// Set up job queue infrastructure if database is available
+	var jobWorker *worker.Worker
+	if pool != nil {
+		queueHandler, w := setupJobQueue(pool)
+		jobWorker = w
+		mux.HandleFunc("POST /jobs", queueHandler.EnqueueJob)
+		mux.HandleFunc("GET /jobs/status", queueHandler.GetQueueStatus)
+	}
+
+	return mux, jobWorker
 }
 
 // setupHealthHandler creates a health handler with optional database connectivity.

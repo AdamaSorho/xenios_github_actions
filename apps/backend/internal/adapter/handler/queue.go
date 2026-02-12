@@ -24,9 +24,11 @@ type GetQueueStatusUseCase interface {
 
 // QueueHandler handles HTTP requests for job queue operations.
 //
-// NOTE: Authentication/authorization middleware is not yet implemented.
-// These endpoints are currently unauthenticated. A follow-up issue should
+// TODO(auth): Authentication/authorization middleware is not yet implemented.
+// These endpoints are currently unauthenticated and MUST NOT be exposed to
+// public internet without auth middleware. A follow-up issue (#31) should
 // add auth middleware before production deployment.
+// Risk: unauthenticated callers can enqueue arbitrary jobs or view queue health.
 type QueueHandler struct {
 	enqueueUseCase   EnqueueJobUseCase
 	getStatusUseCase GetQueueStatusUseCase

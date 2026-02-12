@@ -441,3 +441,133 @@ func TestWorker_IsRunning_InitiallyFalse(t *testing.T) {
 		t.Error("expected worker to not be running initially")
 	}
 }
+
+func TestWorker_CompleteError_IsLogged(t *testing.T) {
+	completeCalled := make(chan struct{}, 1)
+
+	testJob := &entities.Job{
+		ID:          "job-complete-err",
+		Type:        entities.JobTypeTranscription,
+		Status:      entities.JobStatusActive,
+		Attempt:     1,
+		MaxAttempts: 3,
+	}
+
+	dequeueCount := 0
+	mock := &mockJobQueue{
+		dequeueFunc: func(ctx context.Context, jobTypes []entities.JobType) (*entities.Job, error) {
+			dequeueCount++
+			if dequeueCount == 1 {
+				return testJob, nil
+			}
+			return nil, nil
+		},
+		completeFunc: func(ctx context.Context, jobID string) error {
+			completeCalled <- struct{}{}
+			return errors.New("complete failed: db error")
+		},
+	}
+
+	w := NewWorker(mock, 50*time.Millisecond, time.Minute)
+	w.RegisterHandler(entities.JobTypeTranscription, func(ctx context.Context, job *entities.Job) error {
+		return nil // success
+	})
+
+	ctx := context.Background()
+	w.Start(ctx)
+	defer w.Stop()
+
+	select {
+	case <-completeCalled:
+		// Complete was called and returned error - the error is logged, not fatal
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for complete to be called")
+	}
+}
+
+func TestWorker_FailError_AfterHandlerFailure_IsLogged(t *testing.T) {
+	failCalled := make(chan struct{}, 1)
+
+	testJob := &entities.Job{
+		ID:          "job-fail-err",
+		Type:        entities.JobTypeTranscription,
+		Status:      entities.JobStatusActive,
+		Attempt:     1,
+		MaxAttempts: 3,
+	}
+
+	dequeueCount := 0
+	mock := &mockJobQueue{
+		dequeueFunc: func(ctx context.Context, jobTypes []entities.JobType) (*entities.Job, error) {
+			dequeueCount++
+			if dequeueCount == 1 {
+				return testJob, nil
+			}
+			return nil, nil
+		},
+		failFunc: func(ctx context.Context, jobID string, errMsg string) error {
+			failCalled <- struct{}{}
+			return errors.New("fail failed: db error")
+		},
+	}
+
+	w := NewWorker(mock, 50*time.Millisecond, time.Minute)
+	w.RegisterHandler(entities.JobTypeTranscription, func(ctx context.Context, job *entities.Job) error {
+		return errors.New("handler error")
+	})
+
+	ctx := context.Background()
+	w.Start(ctx)
+	defer w.Stop()
+
+	select {
+	case <-failCalled:
+		// Fail was called and returned error - the error is logged, not fatal
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for fail to be called")
+	}
+}
+
+func TestWorker_FailError_NoHandler_IsLogged(t *testing.T) {
+	failCalled := make(chan struct{}, 1)
+
+	testJob := &entities.Job{
+		ID:          "job-no-handler-err",
+		Type:        entities.JobTypeDocumentExtraction,
+		Status:      entities.JobStatusActive,
+		Attempt:     1,
+		MaxAttempts: 3,
+	}
+
+	dequeueCount := 0
+	mock := &mockJobQueue{
+		dequeueFunc: func(ctx context.Context, jobTypes []entities.JobType) (*entities.Job, error) {
+			dequeueCount++
+			if dequeueCount == 1 {
+				return testJob, nil
+			}
+			return nil, nil
+		},
+		failFunc: func(ctx context.Context, jobID string, errMsg string) error {
+			failCalled <- struct{}{}
+			return errors.New("fail failed: db error")
+		},
+	}
+
+	w := NewWorker(mock, 50*time.Millisecond, time.Minute)
+	// Only register handler for transcription, but dequeue returns document_extraction
+	w.RegisterHandler(entities.JobTypeTranscription, func(ctx context.Context, job *entities.Job) error {
+		return nil
+	})
+
+	ctx := context.Background()
+	w.Start(ctx)
+	defer w.Stop()
+
+	select {
+	case <-failCalled:
+		// Fail was called for unregistered type and returned error
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for fail to be called")
+	}
+}

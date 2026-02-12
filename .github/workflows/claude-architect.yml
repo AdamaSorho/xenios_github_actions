@@ -3,12 +3,16 @@ name: Claude Architect - PRD to Issues
 on:
   workflow_dispatch:
     inputs:
+      prd_path:
+        description: 'PRD file path(s) in repo - comma-separated (e.g. docs/PRD.pdf,docs/MVP PRD.pdf)'
+        required: false
+        type: string
       prd_url:
         description: 'PRD URL(s) - comma-separated for multiple (e.g. url1,url2)'
         required: false
         type: string
       prd_content:
-        description: 'Paste PRD content directly (if no URL)'
+        description: 'Paste PRD content directly (if no URL or path)'
         required: false
         type: string
       mode:
@@ -216,6 +220,7 @@ jobs:
             ## Input
 
             ${{ github.event.inputs.prd_content || '' }}
+            ${{ github.event.inputs.prd_path != '' && format('PRD files are in the repository. Use the Read tool to read ALL of these files: {0}', github.event.inputs.prd_path) || '' }}
             ${{ steps.fetch-prd.outputs.prd_fetched == 'true' && format('PRD files downloaded ({0} file(s)): {1}. Use the Read tool to read ALL PRD files. They are in the current working directory.', steps.fetch-prd.outputs.file_count, steps.fetch-prd.outputs.file_list) || '' }}
             ${{ github.event_name == 'issue_comment' && format('Comment trigger on Master Plan issue #{0}. Read the issue body to understand the project state.', github.event.issue.number) || '' }}
 

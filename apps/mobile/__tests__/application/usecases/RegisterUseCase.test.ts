@@ -1,4 +1,5 @@
-import { RegisterUseCase, ValidationError } from '@/application/usecases/RegisterUseCase'
+import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
+import { ValidationError } from '@/application/errors/ValidationError'
 import { AuthRepository, AuthResponse } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthUser } from '@/domain/entities/AuthUser'
@@ -66,6 +67,7 @@ describe('RegisterUseCase', () => {
     const result = await useCase.execute(validCredentials)
 
     expect(result.user).toEqual(mockUser)
+    expect(result.accessToken).toBe('access-token-123')
     expect(authRepo.register).toHaveBeenCalledWith(validCredentials)
     expect(tokenStorage.saveTokens).toHaveBeenCalledWith(mockTokens)
   })

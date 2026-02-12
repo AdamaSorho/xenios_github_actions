@@ -7,10 +7,9 @@ import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { ValidationError } from '@/application/errors/ValidationError'
 
-export { ValidationError }
-
 export interface RegisterOutput {
   user: AuthUser
+  accessToken: string
 }
 
 export class RegisterUseCase {
@@ -28,6 +27,6 @@ export class RegisterUseCase {
     const response = await this.authRepo.register(credentials)
     await this.tokenStorage.saveTokens(response.tokens)
 
-    return { user: response.user }
+    return { user: response.user, accessToken: response.tokens.accessToken }
   }
 }

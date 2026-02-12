@@ -1,4 +1,5 @@
-import { LoginUseCase, ValidationError } from '@/application/usecases/LoginUseCase'
+import { LoginUseCase } from '@/application/usecases/LoginUseCase'
+import { ValidationError } from '@/application/errors/ValidationError'
 import { AuthRepository, AuthResponse } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthUser } from '@/domain/entities/AuthUser'
@@ -62,6 +63,7 @@ describe('LoginUseCase', () => {
     })
 
     expect(result.user).toEqual(mockUser)
+    expect(result.accessToken).toBe('access-token-123')
     expect(authRepo.login).toHaveBeenCalledWith({
       email: 'test@example.com',
       password: 'password123',

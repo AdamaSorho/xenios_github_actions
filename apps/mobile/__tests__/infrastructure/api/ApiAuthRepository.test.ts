@@ -239,5 +239,51 @@ describe('ApiAuthRepository', () => {
         'Failed to get current user'
       )
     })
+
+    it('should throw on invalid role from server', async () => {
+      mockApiClient.get.mockResolvedValue({
+        ok: true,
+        data: {
+          id: 'user-1',
+          email: 'test@example.com',
+          name: 'Test User',
+          role: 'superadmin',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        },
+        error: null,
+      })
+
+      await expect(repo.getCurrentUser()).rejects.toThrow(
+        'Invalid role received from server: superadmin'
+      )
+    })
+  })
+
+  describe('role validation', () => {
+    it('should throw on invalid role during login', async () => {
+      mockApiClient.post.mockResolvedValue({
+        ok: true,
+        data: {
+          user: {
+            id: 'user-1',
+            email: 'test@example.com',
+            name: 'Test User',
+            role: 'unknown_role',
+            created_at: '2024-01-01T00:00:00Z',
+            updated_at: '2024-01-01T00:00:00Z',
+          },
+          tokens: {
+            access_token: 'access-123',
+            refresh_token: 'refresh-456',
+          },
+        },
+        error: null,
+      })
+
+      await expect(
+        repo.login({ email: 'test@example.com', password: 'password123' })
+      ).rejects.toThrow('Invalid role received from server: unknown_role')
+    })
   })
 })

@@ -4,10 +4,9 @@ import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { ValidationError } from '@/application/errors/ValidationError'
 
-export { ValidationError }
-
 export interface LoginOutput {
   user: AuthUser
+  accessToken: string
 }
 
 export class LoginUseCase {
@@ -25,6 +24,6 @@ export class LoginUseCase {
     const response = await this.authRepo.login(credentials)
     await this.tokenStorage.saveTokens(response.tokens)
 
-    return { user: response.user }
+    return { user: response.user, accessToken: response.tokens.accessToken }
   }
 }

@@ -5,7 +5,7 @@ import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { GetAuthStateUseCase } from '@/application/usecases/GetAuthStateUseCase'
-import { AuthenticatedApiClient } from '@/infrastructure/api/AuthenticatedApiClient'
+import type { AuthenticatedApiClient } from '@/infrastructure/api/AuthenticatedApiClient'
 
 export interface AuthContextValue {
   user: AuthUser | null
@@ -70,9 +70,7 @@ export function AuthProvider({ deps, children }: AuthProviderProps) {
       try {
         const result = await deps.loginUseCase.execute(credentials)
         setUser(result.user)
-        deps.authenticatedApiClient.setAccessToken(
-          (await deps.getAuthStateUseCase.execute()).accessToken!
-        )
+        deps.authenticatedApiClient.setAccessToken(result.accessToken)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Login failed'
         setError(message)
@@ -81,7 +79,7 @@ export function AuthProvider({ deps, children }: AuthProviderProps) {
         setIsLoading(false)
       }
     },
-    [deps.loginUseCase, deps.getAuthStateUseCase, deps.authenticatedApiClient]
+    [deps.loginUseCase, deps.authenticatedApiClient]
   )
 
   const register = useCallback(
@@ -91,9 +89,7 @@ export function AuthProvider({ deps, children }: AuthProviderProps) {
       try {
         const result = await deps.registerUseCase.execute(credentials)
         setUser(result.user)
-        deps.authenticatedApiClient.setAccessToken(
-          (await deps.getAuthStateUseCase.execute()).accessToken!
-        )
+        deps.authenticatedApiClient.setAccessToken(result.accessToken)
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Registration failed'
@@ -103,7 +99,7 @@ export function AuthProvider({ deps, children }: AuthProviderProps) {
         setIsLoading(false)
       }
     },
-    [deps.registerUseCase, deps.getAuthStateUseCase, deps.authenticatedApiClient]
+    [deps.registerUseCase, deps.authenticatedApiClient]
   )
 
   const logout = useCallback(async () => {

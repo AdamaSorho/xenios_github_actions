@@ -1,5 +1,6 @@
 import { AuthTokens } from '@/domain/entities/AuthTokens'
 import { LoginCredentials, RegisterCredentials } from '@/domain/entities/AuthCredentials'
+import { isValidRole } from '@/domain/entities/AuthUser'
 import { AuthRepository, AuthResponse } from '@/domain/repositories/AuthRepository'
 import { apiClient } from '@xenios/api-client'
 
@@ -90,28 +91,28 @@ export class ApiAuthRepository implements AuthRepository {
       throw new Error(response.error || 'Failed to get current user')
     }
 
+    return this.mapUser(response.data)
+  }
+
+  private mapUser(data: BackendAuthResponse['user']): AuthResponse['user'] {
+    if (!isValidRole(data.role)) {
+      throw new Error(`Invalid role received from server: ${data.role}`)
+    }
+
     return {
-      id: response.data.id,
-      email: response.data.email,
-      name: response.data.name,
-      role: response.data.role as AuthResponse['user']['role'],
-      avatarUrl: response.data.avatar_url,
-      createdAt: response.data.created_at,
-      updatedAt: response.data.updated_at,
+      id: data.id,
+      email: data.email,
+      name: data.name,
+      role: data.role,
+      avatarUrl: data.avatar_url,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
     }
   }
 
   private mapAuthResponse(data: BackendAuthResponse): AuthResponse {
     return {
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.name,
-        role: data.user.role as AuthResponse['user']['role'],
-        avatarUrl: data.user.avatar_url,
-        createdAt: data.user.created_at,
-        updatedAt: data.user.updated_at,
-      },
+      user: this.mapUser(data.user),
       tokens: {
         accessToken: data.tokens.access_token,
         refreshToken: data.tokens.refresh_token,

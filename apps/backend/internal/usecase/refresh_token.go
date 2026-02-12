@@ -58,7 +58,12 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, rawRefreshToken stri
 	// Replay attack detection: if the token was already used, revoke all tokens for this user.
 	if storedToken.Used {
 		_ = uc.tokenRepo.RevokeAllForUser(ctx, storedToken.UserID)
-		_ = uc.auditRepo.LogEvent(ctx, storedToken.UserID, "auth.token_replay_detected", "refresh_token", storedToken.ID, nil)
+		_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+			ActorID:    storedToken.UserID,
+			Action:     "auth.token_replay_detected",
+			EntityType: "refresh_token",
+			EntityID:   storedToken.ID,
+		})
 		return nil, &AuthenticationError{Message: "token reuse detected, all sessions revoked"}
 	}
 
@@ -95,7 +100,12 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, rawRefreshToken stri
 		return nil, fmt.Errorf("store new refresh token: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, user.ID, "auth.token_refreshed", "refresh_token", storedToken.ID, nil)
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    user.ID,
+		Action:     "auth.token_refreshed",
+		EntityType: "refresh_token",
+		EntityID:   storedToken.ID,
+	})
 
 	return &RefreshOutput{
 		Tokens: &entities.AuthTokens{

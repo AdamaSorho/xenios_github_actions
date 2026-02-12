@@ -64,6 +64,8 @@ func TestMigrations_AllFilesExist(t *testing.T) {
 		"000006_create_programming_tables",
 		"000007_create_rls_policies",
 		"000008_create_job_queue",
+		"000009_create_refresh_tokens",
+		"000010_audit_trigger",
 	}
 
 	dir := migrationDir(t)
@@ -406,6 +408,49 @@ func TestMigrations_EventsAudit_AppendOnly(t *testing.T) {
 	}
 	if !strings.Contains(sql, "do instead nothing") {
 		t.Error("events_audit rules should use DO INSTEAD NOTHING")
+	}
+}
+
+// TestMigrations_AuditTrigger_ReplacesRules verifies that migration 000010 replaces
+// rules with trigger-based append-only enforcement.
+func TestMigrations_AuditTrigger_ReplacesRules(t *testing.T) {
+	sql := strings.ToLower(readMigrationSQL(t, "000010_audit_trigger.up.sql"))
+
+	if !strings.Contains(sql, "drop rule if exists events_audit_no_update") {
+		t.Error("000010 should drop the no-update rule")
+	}
+	if !strings.Contains(sql, "drop rule if exists events_audit_no_delete") {
+		t.Error("000010 should drop the no-delete rule")
+	}
+	if !strings.Contains(sql, "prevent_audit_mutation") {
+		t.Error("000010 should create prevent_audit_mutation trigger function")
+	}
+	if !strings.Contains(sql, "raise exception") {
+		t.Error("000010 trigger should raise an exception on mutation attempts")
+	}
+	if !strings.Contains(sql, "before update") {
+		t.Error("000010 should create a BEFORE UPDATE trigger")
+	}
+	if !strings.Contains(sql, "before delete") {
+		t.Error("000010 should create a BEFORE DELETE trigger")
+	}
+}
+
+// TestMigrations_AuditTrigger_Down_RestoresRules verifies that the down migration restores rules.
+func TestMigrations_AuditTrigger_Down_RestoresRules(t *testing.T) {
+	sql := strings.ToLower(readMigrationSQL(t, "000010_audit_trigger.down.sql"))
+
+	if !strings.Contains(sql, "drop trigger if exists events_audit_no_update") {
+		t.Error("000010 down should drop the update trigger")
+	}
+	if !strings.Contains(sql, "drop trigger if exists events_audit_no_delete") {
+		t.Error("000010 down should drop the delete trigger")
+	}
+	if !strings.Contains(sql, "drop function if exists prevent_audit_mutation") {
+		t.Error("000010 down should drop the trigger function")
+	}
+	if !strings.Contains(sql, "do instead nothing") {
+		t.Error("000010 down should restore DO INSTEAD NOTHING rules")
 	}
 }
 

@@ -1,8 +1,15 @@
 package repository
 
-import "context"
+import (
+	"context"
 
-// AuditRepository defines the interface for recording audit events.
+	"github.com/xenios/backend/internal/domain/entities"
+)
+
+// AuditRepository defines the interface for recording and querying audit events.
 type AuditRepository interface {
-	LogEvent(ctx context.Context, actorID, action, entityType, entityID string, metadata map[string]interface{}) error
+	// LogEvent records an audit event. Implementations should be append-only.
+	LogEvent(ctx context.Context, event *entities.AuditEvent) error
+	// Query retrieves audit events matching the given filter.
+	Query(ctx context.Context, filter entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error)
 }

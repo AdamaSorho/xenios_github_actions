@@ -83,8 +83,12 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, input LoginInput) (*Log
 	}
 
 	if err := uc.hasher.Compare(user.PasswordHash, input.Password); err != nil {
-		_ = uc.auditRepo.LogEvent(ctx, user.ID, "auth.login_failed", "user", user.ID, map[string]interface{}{
-			"reason": "invalid_password",
+		_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+			ActorID:    user.ID,
+			Action:     "auth.login_failed",
+			EntityType: "user",
+			EntityID:   user.ID,
+			Metadata:   map[string]interface{}{"reason": "invalid_password"},
 		})
 		return nil, &AuthenticationError{Message: "invalid credentials"}
 	}
@@ -105,7 +109,12 @@ func (uc *LoginUserUseCase) Execute(ctx context.Context, input LoginInput) (*Log
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, user.ID, "auth.login", "user", user.ID, nil)
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    user.ID,
+		Action:     "auth.login",
+		EntityType: "user",
+		EntityID:   user.ID,
+	})
 
 	return &LoginOutput{
 		User: user,

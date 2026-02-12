@@ -121,7 +121,12 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, input RegisterInput)
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, user.ID, "user.registered", "user", user.ID, nil)
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    user.ID,
+		Action:     "user.registered",
+		EntityType: "user",
+		EntityID:   user.ID,
+	})
 
 	return &RegisterOutput{
 		User: user,

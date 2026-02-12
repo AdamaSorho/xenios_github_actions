@@ -53,6 +53,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
 -- Index for job type filtering
 CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs (type);
 
+-- Enable Row Level Security
+ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
+
 -- Dead letter queue table for permanently failed jobs
 CREATE TABLE IF NOT EXISTS jobs_dead_letter (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,6 +72,9 @@ CREATE TABLE IF NOT EXISTS jobs_dead_letter (
 CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_type ON jobs_dead_letter (type);
 CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_failed_at ON jobs_dead_letter (failed_at);
 
+-- Enable Row Level Security
+ALTER TABLE jobs_dead_letter ENABLE ROW LEVEL SECURITY;
+
 -- Events audit table for job lifecycle tracking
 CREATE TABLE IF NOT EXISTS events_audit (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,3 +88,6 @@ CREATE TABLE IF NOT EXISTS events_audit (
 -- Index for audit trail queries
 CREATE INDEX IF NOT EXISTS idx_events_audit_entity ON events_audit (entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_events_audit_type ON events_audit (event_type);
+
+-- Enable Row Level Security
+ALTER TABLE events_audit ENABLE ROW LEVEL SECURITY;

@@ -681,9 +681,10 @@ func TestMigrations_JSONBOnlyWhereNeeded(t *testing.T) {
 
 	// Allowed JSONB columns per the issue spec
 	allowedJSONB := map[string][]string{
-		"000003_create_sessions_tables.up.sql":   {"summary"},
-		"000004_create_health_data_tables.up.sql": {"metrics"},
-		"000005_create_analytics_tables.up.sql":   {"factors", "metadata"},
+		"000002_create_job_queue.up.sql":           {"payload"},
+		"000003_create_sessions_tables.up.sql":     {"summary"},
+		"000004_create_health_data_tables.up.sql":  {"metrics"},
+		"000005_create_analytics_tables.up.sql":    {"factors", "metadata"},
 	}
 
 	for _, f := range files {

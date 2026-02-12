@@ -149,7 +149,7 @@ jobs:
             - If you encounter a blocker, document it in a PR comment and implement
               as much as possible
           claude_args: |
-            --max-turns 50
+            --max-turns 200
             --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
 

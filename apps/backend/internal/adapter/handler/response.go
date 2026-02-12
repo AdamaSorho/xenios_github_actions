@@ -18,7 +18,20 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, ErrorResponse{Error: message})
 }
 
-// ErrorResponse is the JSON response format for errors.
+func respondErrorWithCode(w http.ResponseWriter, status int, message, code string, details map[string]interface{}) {
+	resp := ErrorResponse{
+		Error: message,
+		Code:  code,
+	}
+	if details != nil {
+		resp.Details = details
+	}
+	respondJSON(w, status, resp)
+}
+
+// ErrorResponse is the standardized JSON error response format.
 type ErrorResponse struct {
-	Error string `json:"error"`
+	Error   string                 `json:"error"`
+	Code    string                 `json:"code,omitempty"`
+	Details map[string]interface{} `json:"details,omitempty"`
 }

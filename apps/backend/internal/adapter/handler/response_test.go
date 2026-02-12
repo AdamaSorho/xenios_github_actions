@@ -379,3 +379,63 @@ func TestErrorResponse_JSONStructure(t *testing.T) {
 		t.Errorf("expected exactly 1 field, got %d", len(rawResponse))
 	}
 }
+
+func TestRespondErrorWithCode_FullResponse(t *testing.T) {
+	// Arrange
+	rec := httptest.NewRecorder()
+	details := map[string]interface{}{
+		"field": "email",
+		"reason": "invalid format",
+	}
+
+	// Act
+	respondErrorWithCode(rec, http.StatusBadRequest, "validation failed", "VALIDATION_ERROR", details)
+
+	// Assert
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+
+	var response ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.Error != "validation failed" {
+		t.Errorf("expected error 'validation failed', got %q", response.Error)
+	}
+	if response.Code != "VALIDATION_ERROR" {
+		t.Errorf("expected code 'VALIDATION_ERROR', got %q", response.Code)
+	}
+	if response.Details == nil {
+		t.Fatal("expected details to be non-nil")
+	}
+	if response.Details["field"] != "email" {
+		t.Errorf("expected details.field 'email', got %v", response.Details["field"])
+	}
+}
+
+func TestRespondErrorWithCode_NilDetails(t *testing.T) {
+	// Arrange
+	rec := httptest.NewRecorder()
+
+	// Act
+	respondErrorWithCode(rec, http.StatusNotFound, "not found", "NOT_FOUND", nil)
+
+	// Assert
+	var rawResponse map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&rawResponse); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// With nil details and omitempty, the "details" field should not be present
+	if _, exists := rawResponse["details"]; exists {
+		t.Error("expected 'details' field to be omitted when nil")
+	}
+	if rawResponse["error"] != "not found" {
+		t.Errorf("expected error 'not found', got %v", rawResponse["error"])
+	}
+	if rawResponse["code"] != "NOT_FOUND" {
+		t.Errorf("expected code 'NOT_FOUND', got %v", rawResponse["code"])
+	}
+}

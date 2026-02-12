@@ -2,111 +2,49 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/xenios/backend/internal/infrastructure/config"
 )
 
-func TestGetPort_Default(t *testing.T) {
-	// Arrange - unset PORT to test default
-	originalPort := os.Getenv("PORT")
-	os.Unsetenv("PORT")
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		}
-	}()
-
-	// Act
-	port := getPort()
-
-	// Assert
-	if port != "8080" {
-		t.Errorf("expected default port 8080, got %s", port)
-	}
-}
-
-func TestGetPort_CustomPort(t *testing.T) {
-	// Arrange
-	originalPort := os.Getenv("PORT")
-	customPort := "9999"
-	os.Setenv("PORT", customPort)
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
-
-	// Act
-	port := getPort()
-
-	// Assert
-	if port != customPort {
-		t.Errorf("expected custom port %s, got %s", customPort, port)
-	}
-}
-
-func TestGetPort_EmptyString(t *testing.T) {
-	// Arrange
-	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "")
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
-
-	// Act
-	port := getPort()
-
-	// Assert - empty string should default to 8080
-	if port != "8080" {
-		t.Errorf("expected default port 8080 for empty string, got %s", port)
+func testConfig(port string) *config.Config {
+	return &config.Config{
+		Port:        port,
+		Environment: "test",
+		CORSOrigins: []string{"http://localhost:3000"},
 	}
 }
 
 func TestSetupServer_Configuration(t *testing.T) {
 	// Arrange
-	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "8080")
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
+	cfg := testConfig("8080")
 
 	// Act
-	server, cleanup := setupServer()
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
 
-	// Assert - verify configuration
+	// Assert
 	if server.Addr != ":8080" {
 		t.Errorf("expected Addr :8080, got %s", server.Addr)
 	}
-
 	if server.ReadTimeout != 15*time.Second {
 		t.Errorf("expected ReadTimeout 15s, got %v", server.ReadTimeout)
 	}
-
 	if server.WriteTimeout != 15*time.Second {
 		t.Errorf("expected WriteTimeout 15s, got %v", server.WriteTimeout)
 	}
-
 	if server.IdleTimeout != 60*time.Second {
 		t.Errorf("expected IdleTimeout 60s, got %v", server.IdleTimeout)
 	}
-
 	if server.Handler == nil {
 		t.Error("expected non-nil Handler")
 	}
@@ -114,32 +52,19 @@ func TestSetupServer_Configuration(t *testing.T) {
 
 func TestSetupServer_HealthEndpoint(t *testing.T) {
 	// Arrange
-	originalPort := os.Getenv("PORT")
-	port := "18080"
-	os.Setenv("PORT", port)
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
-
-	// Act
-	server, cleanup := setupServer()
+	cfg := testConfig("18080")
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
 
-	// Start server in background
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			// Expected
 		}
 	}()
-
 	time.Sleep(100 * time.Millisecond)
 
-	// Test health endpoint
-	resp, err := http.Get("http://localhost:" + port + "/health")
+	// Act
+	resp, err := http.Get("http://localhost:18080/health")
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
@@ -150,42 +75,31 @@ func TestSetupServer_HealthEndpoint(t *testing.T) {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Clean up
+	// Verify X-Request-ID header is set (middleware chain working)
+	if resp.Header.Get("X-Request-ID") == "" {
+		t.Error("expected X-Request-ID header from middleware")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		t.Errorf("failed to shutdown server: %v", err)
-	}
+	server.Shutdown(ctx)
 }
 
 func TestSetupServer_VersionEndpoint(t *testing.T) {
 	// Arrange
-	originalPort := os.Getenv("PORT")
-	port := "18081"
-	os.Setenv("PORT", port)
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
-
-	// Act
-	server, cleanup := setupServer()
+	cfg := testConfig("18081")
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
 
-	// Start server
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			// Expected
 		}
 	}()
-
 	time.Sleep(100 * time.Millisecond)
 
-	// Test version endpoint
-	resp, err := http.Get("http://localhost:" + port + "/version")
+	// Act
+	resp, err := http.Get("http://localhost:18081/version")
 	if err != nil {
 		t.Fatalf("failed to call version endpoint: %v", err)
 	}
@@ -196,174 +110,164 @@ func TestSetupServer_VersionEndpoint(t *testing.T) {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Clean up
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		t.Errorf("failed to shutdown server: %v", err)
+	server.Shutdown(ctx)
+}
+
+func TestSetupServer_ProtectedEndpoint_NoAuth(t *testing.T) {
+	// Arrange
+	cfg := testConfig("18082")
+	server, cleanup := setupServer(cfg)
+	defer cleanup()
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Expected
+		}
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// Act - call protected endpoint without JWT
+	resp, err := http.Get("http://localhost:18082/api/v1/coaches/coach-1/clients")
+	if err != nil {
+		t.Fatalf("failed to call protected endpoint: %v", err)
 	}
+	defer resp.Body.Close()
+
+	// Assert - should get 401
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response["code"] != "UNAUTHORIZED" {
+		t.Errorf("expected code UNAUTHORIZED, got %v", response["code"])
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctx)
+}
+
+func TestSetupServer_ProtectedEndpoint_WithAuth(t *testing.T) {
+	// Arrange
+	cfg := testConfig("18083")
+	server, cleanup := setupServer(cfg)
+	defer cleanup()
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Expected
+		}
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// Act - call protected endpoint with Bearer token
+	req, _ := http.NewRequest(http.MethodGet, "http://localhost:18083/api/v1/coaches/coach-1/clients", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to call protected endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Assert - should get 200 with empty list
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctx)
+}
+
+func TestSetupServer_CoachClientCreate(t *testing.T) {
+	// Arrange
+	cfg := testConfig("18084")
+	server, cleanup := setupServer(cfg)
+	defer cleanup()
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Expected
+		}
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// Act - create a coach-client relationship
+	body := strings.NewReader(`{"client_id":"client-1"}`)
+	req, _ := http.NewRequest(http.MethodPost, "http://localhost:18084/api/v1/coaches/coach-1/clients", body)
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to call create endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Assert
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected status 201, got %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'data' field in response")
+	}
+	if data["coach_id"] != "coach-1" {
+		t.Errorf("expected coach_id 'coach-1', got %v", data["coach_id"])
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctx)
 }
 
 func TestSetupServer_CustomPort(t *testing.T) {
 	// Arrange
-	originalPort := os.Getenv("PORT")
-	customPort := "18082"
-	os.Setenv("PORT", customPort)
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
+	cfg := testConfig("18086")
 
 	// Act
-	server, cleanup := setupServer()
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
 
 	// Assert
-	expectedAddr := ":" + customPort
-	if server.Addr != expectedAddr {
-		t.Errorf("expected Addr %s, got %s", expectedAddr, server.Addr)
+	if server.Addr != ":18086" {
+		t.Errorf("expected Addr :18086, got %s", server.Addr)
 	}
 }
 
 func TestSetupServer_NotNil(t *testing.T) {
-	// Act
-	server, cleanup := setupServer()
+	cfg := testConfig("8080")
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
-
-	// Assert
 	if server == nil {
 		t.Error("expected non-nil server")
 	}
 }
 
 func TestSetupServer_HandlerNotNil(t *testing.T) {
-	// Act
-	server, cleanup := setupServer()
+	cfg := testConfig("8080")
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
-
-	// Assert
 	if server.Handler == nil {
 		t.Error("expected non-nil Handler")
 	}
 }
 
-func TestSetupServer_TimeoutValues(t *testing.T) {
-	// Act
-	server, cleanup := setupServer()
-	defer cleanup()
-
-	// Assert - verify specific timeout values
-	if server.ReadTimeout != 15*time.Second {
-		t.Errorf("expected ReadTimeout 15s, got %v", server.ReadTimeout)
-	}
-
-	if server.WriteTimeout != 15*time.Second {
-		t.Errorf("expected WriteTimeout 15s, got %v", server.WriteTimeout)
-	}
-
-	if server.IdleTimeout != 60*time.Second {
-		t.Errorf("expected IdleTimeout 60s, got %v", server.IdleTimeout)
-	}
-}
-
-func TestGetPort_VariousPortNumbers(t *testing.T) {
-	testCases := []struct {
-		name     string
-		portEnv  string
-		expected string
-	}{
-		{"Port 80", "80", "80"},
-		{"Port 443", "443", "443"},
-		{"Port 3000", "3000", "3000"},
-		{"Port 8000", "8000", "8000"},
-		{"Port 65535", "65535", "65535"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange
-			originalPort := os.Getenv("PORT")
-			os.Setenv("PORT", tc.portEnv)
-			defer func() {
-				if originalPort != "" {
-					os.Setenv("PORT", originalPort)
-				} else {
-					os.Unsetenv("PORT")
-				}
-			}()
-
-			// Act
-			port := getPort()
-
-			// Assert
-			if port != tc.expected {
-				t.Errorf("expected port %s, got %s", tc.expected, port)
-			}
-		})
-	}
-}
-
-func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
-	// Arrange
-	originalPort := os.Getenv("PORT")
-	port := "18083"
-	os.Setenv("PORT", port)
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
-
-	// Act
-	server, cleanup := setupServer()
-	defer cleanup()
-
-	// Start server
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
-		}
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	// Test both endpoints
-	healthResp, err := http.Get("http://localhost:" + port + "/health")
-	if err != nil {
-		t.Fatalf("failed to call health endpoint: %v", err)
-	}
-	defer healthResp.Body.Close()
-
-	versionResp, err := http.Get("http://localhost:" + port + "/version")
-	if err != nil {
-		t.Fatalf("failed to call version endpoint: %v", err)
-	}
-	defer versionResp.Body.Close()
-
-	// Assert both return 200
-	if healthResp.StatusCode != http.StatusOK {
-		t.Errorf("expected health status 200, got %d", healthResp.StatusCode)
-	}
-
-	if versionResp.StatusCode != http.StatusOK {
-		t.Errorf("expected version status 200, got %d", versionResp.StatusCode)
-	}
-
-	// Clean up
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		t.Errorf("failed to shutdown server: %v", err)
-	}
-}
-
 func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
-	// Arrange - ensure DATABASE_URL is not set
 	originalDBURL := os.Getenv("DATABASE_URL")
 	os.Unsetenv("DATABASE_URL")
 	defer func() {
@@ -372,18 +276,15 @@ func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
 		}
 	}()
 
-	// Act
 	h, cleanup := setupHealthHandler()
 	defer cleanup()
 
-	// Assert - handler should be non-nil
 	if h == nil {
 		t.Error("expected non-nil handler when DATABASE_URL is not set")
 	}
 }
 
 func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
-	// Arrange - set an invalid DATABASE_URL that will fail pool creation
 	originalDBURL := os.Getenv("DATABASE_URL")
 	os.Setenv("DATABASE_URL", "not-a-valid-url")
 	defer func() {
@@ -394,18 +295,15 @@ func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
 		}
 	}()
 
-	// Act
 	h, cleanup := setupHealthHandler()
 	defer cleanup()
 
-	// Assert - handler should still be non-nil (graceful degradation)
 	if h == nil {
 		t.Error("expected non-nil handler even with invalid DATABASE_URL")
 	}
 }
 
 func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
-	// Arrange - set a valid-format but unreachable DATABASE_URL
 	originalDBURL := os.Getenv("DATABASE_URL")
 	os.Setenv("DATABASE_URL", "postgres://invalid:invalid@localhost:19999/nonexistent?connect_timeout=1")
 	defer func() {
@@ -416,18 +314,15 @@ func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
 		}
 	}()
 
-	// Act
 	h, cleanup := setupHealthHandler()
 	defer cleanup()
 
-	// Assert - handler should still be non-nil (graceful degradation)
 	if h == nil {
 		t.Error("expected non-nil handler even with unreachable database")
 	}
 }
 
 func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
-	// Arrange
 	originalDBURL := os.Getenv("DATABASE_URL")
 	os.Unsetenv("DATABASE_URL")
 	defer func() {
@@ -436,45 +331,28 @@ func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
 		}
 	}()
 
-	// Act
 	_, cleanup := setupHealthHandler()
-
-	// Assert - cleanup should be callable without panicking (no-op when no DB)
 	cleanup()
-	// Call again to ensure idempotency
-	cleanup()
+	cleanup() // idempotent
 }
 
 func TestRunServer_GracefulShutdown(t *testing.T) {
 	// Arrange
-	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "18084")
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-	}()
-
-	server, cleanup := setupServer()
+	cfg := testConfig("18087")
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
 
-	// Reset signal handling for this test
 	signal.Reset(syscall.SIGINT, syscall.SIGTERM)
 
-	// Act - run server in background
 	done := make(chan struct{})
 	go func() {
 		runServer(server)
 		close(done)
 	}()
 
-	// Wait for server to start
 	time.Sleep(200 * time.Millisecond)
 
-	// Verify server is running
-	resp, err := http.Get("http://localhost:18084/health")
+	resp, err := http.Get("http://localhost:18087/health")
 	if err != nil {
 		t.Fatalf("server should be running: %v", err)
 	}
@@ -484,14 +362,12 @@ func TestRunServer_GracefulShutdown(t *testing.T) {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Send SIGINT to trigger graceful shutdown
 	proc, err := os.FindProcess(os.Getpid())
 	if err != nil {
 		t.Fatalf("failed to find current process: %v", err)
 	}
 	proc.Signal(syscall.SIGINT)
 
-	// Wait for server to shut down
 	select {
 	case <-done:
 		// Server shut down gracefully
@@ -500,91 +376,108 @@ func TestRunServer_GracefulShutdown(t *testing.T) {
 	}
 }
 
-func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
+func TestSetupServer_CORSHeaders(t *testing.T) {
 	// Arrange
-	originalPort := os.Getenv("PORT")
-	originalDBURL := os.Getenv("DATABASE_URL")
-	os.Setenv("PORT", "18085")
-	os.Unsetenv("DATABASE_URL")
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("PORT", originalPort)
-		} else {
-			os.Unsetenv("PORT")
-		}
-		if originalDBURL != "" {
-			os.Setenv("DATABASE_URL", originalDBURL)
-		}
-	}()
-
-	// Act
-	server, cleanup := setupServer()
+	cfg := testConfig("18088")
+	cfg.CORSOrigins = []string{"http://localhost:3000"}
+	server, cleanup := setupServer(cfg)
 	defer cleanup()
 
-	// Start server
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Expected to close during test
+			// Expected
 		}
 	}()
-
 	time.Sleep(100 * time.Millisecond)
 
-	// Test health endpoint returns legacy format
-	resp, err := http.Get("http://localhost:18085/health")
+	// Act - send preflight OPTIONS request
+	req, _ := http.NewRequest(http.MethodOptions, "http://localhost:18088/health", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("failed to call health endpoint: %v", err)
+		t.Fatalf("failed to send OPTIONS request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	// Assert - CORS headers should be present
+	if resp.Header.Get("Access-Control-Allow-Origin") == "" {
+		t.Error("expected Access-Control-Allow-Origin header")
 	}
 
-	// Clean up
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		t.Errorf("failed to shutdown server: %v", err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctx)
 }
 
 func TestWireHealthHandler_ReturnsHandlerAndCleanup(t *testing.T) {
-	// Arrange - create a pool with an unreachable database
-	// The pool itself is created successfully; it's lazy and won't connect until used
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
 	if err != nil {
 		t.Fatalf("failed to create pool: %v", err)
 	}
 
-	// Act
 	h, cleanup := wireHealthHandler(pool)
-
-	// Assert - handler should be non-nil
 	if h == nil {
 		t.Error("expected non-nil handler from wireHealthHandler")
 	}
-
-	// Cleanup should not panic
 	cleanup()
 }
 
 func TestWireHealthHandler_CleanupClosesPool(t *testing.T) {
-	// Arrange
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, "postgres://test:test@localhost:19999/testdb")
 	if err != nil {
 		t.Fatalf("failed to create pool: %v", err)
 	}
 
-	// Act
 	_, cleanup := wireHealthHandler(pool)
 	cleanup()
 
-	// Assert - after cleanup, pool should be closed
-	// Calling Ping on a closed pool should fail
 	if err := pool.Ping(ctx); err == nil {
 		t.Error("expected error when pinging closed pool")
 	}
+}
+
+func TestSetupServer_InvalidJSONBody(t *testing.T) {
+	// Arrange
+	cfg := testConfig("18089")
+	server, cleanup := setupServer(cfg)
+	defer cleanup()
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Expected
+		}
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	// Act - send invalid JSON to a POST endpoint
+	body := strings.NewReader("not json {{{")
+	req, _ := http.NewRequest(http.MethodPost, "http://localhost:18089/api/v1/coaches/coach-1/clients", body)
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Assert - should get 400 with descriptive error
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", resp.StatusCode)
+	}
+
+	var response map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response["code"] != "INVALID_JSON" {
+		t.Errorf("expected code 'INVALID_JSON', got %v", response["code"])
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctx)
 }

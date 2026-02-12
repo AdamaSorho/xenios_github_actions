@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+func clearS3Env() (restore func()) {
+	keys := []string{"S3_BUCKET", "S3_REGION", "S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY"}
+	saved := make(map[string]string)
+	for _, k := range keys {
+		saved[k] = os.Getenv(k)
+		os.Unsetenv(k)
+	}
+	return func() {
+		for _, k := range keys {
+			restoreEnv(k, saved[k])
+		}
+	}
+}
+
 func TestLoad_Defaults(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	originalDBURL := os.Getenv("DATABASE_URL")
@@ -16,12 +30,14 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("JWT_SECRET")
 	os.Unsetenv("ENVIRONMENT")
 	os.Unsetenv("CORS_ORIGINS")
+	restoreS3 := clearS3Env()
 	defer func() {
 		restoreEnv("PORT", originalPort)
 		restoreEnv("DATABASE_URL", originalDBURL)
 		restoreEnv("JWT_SECRET", originalJWT)
 		restoreEnv("ENVIRONMENT", originalEnv)
 		restoreEnv("CORS_ORIGINS", originalCORS)
+		restoreS3()
 	}()
 
 	cfg := Load()
@@ -154,5 +170,72 @@ func restoreEnv(key, val string) {
 		os.Setenv(key, val)
 	} else {
 		os.Unsetenv(key)
+	}
+}
+
+func TestLoad_S3Defaults(t *testing.T) {
+	restoreS3 := clearS3Env()
+	originalEnv := os.Getenv("ENVIRONMENT")
+	os.Unsetenv("ENVIRONMENT")
+	defer func() {
+		restoreS3()
+		restoreEnv("ENVIRONMENT", originalEnv)
+	}()
+
+	cfg := Load()
+
+	if cfg.S3.Bucket != "xenios-development-uploads" {
+		t.Errorf("expected default S3 bucket 'xenios-development-uploads', got '%s'", cfg.S3.Bucket)
+	}
+	if cfg.S3.Region != "us-east-1" {
+		t.Errorf("expected default S3 region 'us-east-1', got '%s'", cfg.S3.Region)
+	}
+	if cfg.S3.Endpoint != "" {
+		t.Errorf("expected empty S3 endpoint, got '%s'", cfg.S3.Endpoint)
+	}
+}
+
+func TestLoad_S3CustomValues(t *testing.T) {
+	restoreS3 := clearS3Env()
+	defer restoreS3()
+
+	os.Setenv("S3_BUCKET", "custom-bucket")
+	os.Setenv("S3_REGION", "eu-west-1")
+	os.Setenv("S3_ENDPOINT", "https://r2.example.com")
+	os.Setenv("S3_ACCESS_KEY", "access-key")
+	os.Setenv("S3_SECRET_KEY", "secret-key")
+
+	cfg := Load()
+
+	if cfg.S3.Bucket != "custom-bucket" {
+		t.Errorf("expected S3 bucket 'custom-bucket', got '%s'", cfg.S3.Bucket)
+	}
+	if cfg.S3.Region != "eu-west-1" {
+		t.Errorf("expected S3 region 'eu-west-1', got '%s'", cfg.S3.Region)
+	}
+	if cfg.S3.Endpoint != "https://r2.example.com" {
+		t.Errorf("expected S3 endpoint 'https://r2.example.com', got '%s'", cfg.S3.Endpoint)
+	}
+	if cfg.S3.AccessKey != "access-key" {
+		t.Errorf("expected S3 access key 'access-key', got '%s'", cfg.S3.AccessKey)
+	}
+	if cfg.S3.SecretKey != "secret-key" {
+		t.Errorf("expected S3 secret key 'secret-key', got '%s'", cfg.S3.SecretKey)
+	}
+}
+
+func TestLoad_S3BucketIncludesEnvironment(t *testing.T) {
+	restoreS3 := clearS3Env()
+	originalEnv := os.Getenv("ENVIRONMENT")
+	os.Setenv("ENVIRONMENT", "staging")
+	defer func() {
+		restoreS3()
+		restoreEnv("ENVIRONMENT", originalEnv)
+	}()
+
+	cfg := Load()
+
+	if cfg.S3.Bucket != "xenios-staging-uploads" {
+		t.Errorf("expected S3 bucket 'xenios-staging-uploads', got '%s'", cfg.S3.Bucket)
 	}
 }

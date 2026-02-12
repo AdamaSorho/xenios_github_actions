@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       prd_url:
-        description: 'URL to PRD document (GitHub raw URL, or public URL)'
+        description: 'PRD URL(s) - comma-separated for multiple (e.g. url1,url2)'
         required: false
         type: string
       prd_content:
@@ -104,28 +104,40 @@ jobs:
         id: fetch-prd
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.prd_url != ''
         run: |
-          PRD_URL="${{ github.event.inputs.prd_url }}"
-          echo "Fetching PRD from: $PRD_URL"
+          # Split comma-separated URLs and download each
+          IFS=',' read -ra URLS <<< "${{ github.event.inputs.prd_url }}"
+          FILE_INDEX=0
+          FILE_LIST=""
 
-          # Detect if URL is a PDF (by extension or content-type)
-          if [[ "$PRD_URL" == *.pdf ]] || [[ "$PRD_URL" == *.PDF ]]; then
-            echo "Detected PDF URL by extension"
-            curl -sL "$PRD_URL" -o prd_content.pdf
-            echo "prd_format=pdf" >> $GITHUB_OUTPUT
-          else
-            # Check content-type header
-            CONTENT_TYPE=$(curl -sI -L "$PRD_URL" | grep -i "content-type" | tail -1)
-            if echo "$CONTENT_TYPE" | grep -qi "application/pdf"; then
-              echo "Detected PDF by content-type: $CONTENT_TYPE"
-              curl -sL "$PRD_URL" -o prd_content.pdf
-              echo "prd_format=pdf" >> $GITHUB_OUTPUT
+          for RAW_URL in "${URLS[@]}"; do
+            PRD_URL=$(echo "$RAW_URL" | xargs)  # trim whitespace
+            [ -z "$PRD_URL" ] && continue
+            FILE_INDEX=$((FILE_INDEX + 1))
+            echo "Fetching PRD $FILE_INDEX from: $PRD_URL"
+
+            # Detect if URL is a PDF (by extension or content-type)
+            if [[ "$PRD_URL" == *.pdf ]] || [[ "$PRD_URL" == *.PDF ]]; then
+              FILENAME="prd_${FILE_INDEX}.pdf"
+              curl -sL "$PRD_URL" -o "$FILENAME"
+              FILE_LIST="${FILE_LIST}${FILENAME} (PDF), "
             else
-              echo "Detected text/markdown content"
-              curl -sL "$PRD_URL" -o prd_content.txt
-              echo "prd_format=text" >> $GITHUB_OUTPUT
+              CONTENT_TYPE=$(curl -sI -L "$PRD_URL" | grep -i "content-type" | tail -1)
+              if echo "$CONTENT_TYPE" | grep -qi "application/pdf"; then
+                FILENAME="prd_${FILE_INDEX}.pdf"
+                curl -sL "$PRD_URL" -o "$FILENAME"
+                FILE_LIST="${FILE_LIST}${FILENAME} (PDF), "
+              else
+                FILENAME="prd_${FILE_INDEX}.txt"
+                curl -sL "$PRD_URL" -o "$FILENAME"
+                FILE_LIST="${FILE_LIST}${FILENAME} (text), "
+              fi
             fi
-          fi
+          done
+
+          echo "file_count=$FILE_INDEX" >> $GITHUB_OUTPUT
+          echo "file_list=$FILE_LIST" >> $GITHUB_OUTPUT
           echo "prd_fetched=true" >> $GITHUB_OUTPUT
+          echo "Downloaded $FILE_INDEX PRD file(s): $FILE_LIST"
 
       - name: Fetch Amendment PRDs (if amend action)
         id: fetch-amendment-prds
@@ -204,8 +216,7 @@ jobs:
             ## Input
 
             ${{ github.event.inputs.prd_content || '' }}
-            ${{ steps.fetch-prd.outputs.prd_fetched == 'true' && steps.fetch-prd.outputs.prd_format == 'pdf' && 'PRD loaded as PDF file: prd_content.pdf - Use the Read tool to read this PDF file.' || '' }}
-            ${{ steps.fetch-prd.outputs.prd_fetched == 'true' && steps.fetch-prd.outputs.prd_format == 'text' && 'PRD content loaded from file: prd_content.txt - Read this file.' || '' }}
+            ${{ steps.fetch-prd.outputs.prd_fetched == 'true' && format('PRD files downloaded ({0} file(s)): {1}. Use the Read tool to read ALL PRD files. They are in the current working directory.', steps.fetch-prd.outputs.file_count, steps.fetch-prd.outputs.file_list) || '' }}
             ${{ github.event_name == 'issue_comment' && format('Comment trigger on Master Plan issue #{0}. Read the issue body to understand the project state.', github.event.issue.number) || '' }}
 
             ## Your Task Based on Batch Action

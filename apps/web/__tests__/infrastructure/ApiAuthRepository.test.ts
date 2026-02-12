@@ -167,7 +167,7 @@ describe('ApiAuthRepository', () => {
       })
 
       await expect(repo.logout()).resolves.toBeUndefined()
-      expect(mockedApiClient.post).toHaveBeenCalledWith('/v1/auth/logout')
+      expect(mockedApiClient.post).toHaveBeenCalledWith('/auth/logout')
     })
 
     test('logout_ApiError_ThrowsError', async () => {

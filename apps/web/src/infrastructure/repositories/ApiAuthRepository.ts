@@ -41,7 +41,7 @@ export class ApiAuthRepository implements AuthRepository {
   }
 
   async logout(): Promise<void> {
-    const response = await apiClient.post('/v1/auth/logout')
+    const response = await apiClient.post('/auth/logout')
     if (!response.ok) {
       throw new Error(response.error || 'Logout failed')
     }

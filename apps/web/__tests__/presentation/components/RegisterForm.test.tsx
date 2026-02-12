@@ -29,6 +29,8 @@ function createMockTokenStorage(): jest.Mocked<TokenStorage> {
     getRefreshToken: jest.fn().mockReturnValue(null),
     setTokens: jest.fn(),
     clearTokens: jest.fn(),
+    getUser: jest.fn().mockReturnValue(null),
+    setUser: jest.fn(),
   }
 }
 

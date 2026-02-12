@@ -39,6 +39,8 @@ function createMockTokenStorage(): jest.Mocked<TokenStorage> {
     getRefreshToken: jest.fn().mockReturnValue(null),
     setTokens: jest.fn(),
     clearTokens: jest.fn(),
+    getUser: jest.fn().mockReturnValue(null),
+    setUser: jest.fn(),
   }
 }
 
@@ -84,7 +86,7 @@ describe('useAuth', () => {
     mockTokenManager = createMockTokenManager()
   })
 
-  test('initialState_NoStoredToken_IsUnauthenticated', () => {
+  test('initialState_NoStoredUser_IsUnauthenticated', () => {
     const { result } = renderHook(() => useAuth(), {
       wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
     })
@@ -92,6 +94,17 @@ describe('useAuth', () => {
     expect(result.current.user).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
     expect(result.current.isLoading).toBe(false)
+  })
+
+  test('initialState_StoredUser_RestoresSession', () => {
+    mockTokenStorage.getUser.mockReturnValue(mockAuthResponse.user)
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: createWrapper(mockAuthRepo, mockTokenStorage, mockTokenManager),
+    })
+
+    expect(result.current.user).toEqual(mockAuthResponse.user)
+    expect(result.current.isAuthenticated).toBe(true)
   })
 
   test('login_ValidCredentials_SetsUserAndTokens', async () => {
@@ -112,6 +125,9 @@ describe('useAuth', () => {
     expect(result.current.isAuthenticated).toBe(true)
     expect(mockTokenStorage.setTokens).toHaveBeenCalledWith(
       mockAuthResponse.tokens
+    )
+    expect(mockTokenStorage.setUser).toHaveBeenCalledWith(
+      mockAuthResponse.user
     )
     expect(mockTokenManager.setAuthToken).toHaveBeenCalledWith(
       mockAuthResponse.tokens.access_token
@@ -161,6 +177,9 @@ describe('useAuth', () => {
     expect(result.current.isAuthenticated).toBe(true)
     expect(mockTokenStorage.setTokens).toHaveBeenCalledWith(
       mockAuthResponse.tokens
+    )
+    expect(mockTokenStorage.setUser).toHaveBeenCalledWith(
+      mockAuthResponse.user
     )
     expect(mockTokenManager.setAuthToken).toHaveBeenCalledWith(
       mockAuthResponse.tokens.access_token

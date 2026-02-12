@@ -74,4 +74,50 @@ describe('LocalTokenStorage', () => {
     // After clearing, cookie should be expired (empty or removed)
     expect(document.cookie).not.toContain('xenios_has_token=1')
   })
+
+  test('getUser_NoUser_ReturnsNull', () => {
+    expect(storage.getUser()).toBeNull()
+  })
+
+  test('setUser_StoresUser_RetrievableAfterward', () => {
+    const user = {
+      id: 'user-1',
+      email: 'coach@example.com',
+      name: 'Test Coach',
+      role: 'coach',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    storage.setUser(user)
+
+    expect(storage.getUser()).toEqual(user)
+  })
+
+  test('clearTokens_AlsoClearsUser', () => {
+    const user = {
+      id: 'user-1',
+      email: 'coach@example.com',
+      name: 'Test Coach',
+      role: 'coach',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    }
+
+    storage.setUser(user)
+    storage.setTokens({
+      access_token: 'access-123',
+      refresh_token: 'refresh-456',
+    })
+
+    storage.clearTokens()
+
+    expect(storage.getUser()).toBeNull()
+  })
+
+  test('getUser_InvalidJson_ReturnsNull', () => {
+    localStorage.setItem('xenios_user', 'invalid-json')
+
+    expect(storage.getUser()).toBeNull()
+  })
 })

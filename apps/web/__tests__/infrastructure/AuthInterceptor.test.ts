@@ -35,6 +35,8 @@ function createMockTokenStorage(): jest.Mocked<TokenStorage> {
     getRefreshToken: jest.fn(),
     setTokens: jest.fn(),
     clearTokens: jest.fn(),
+    getUser: jest.fn(),
+    setUser: jest.fn(),
   }
 }
 
@@ -284,9 +286,12 @@ describe('AuthInterceptor.isAuthEndpoint', () => {
     expect(interceptor.isAuthEndpoint('/auth/refresh')).toBe(true)
   })
 
+  test('logoutPath_Matches', () => {
+    expect(interceptor.isAuthEndpoint('/auth/logout')).toBe(true)
+  })
+
   test('nonAuthPaths_DoNotMatch', () => {
     expect(interceptor.isAuthEndpoint('/api/users')).toBe(false)
-    expect(interceptor.isAuthEndpoint('/v1/auth/logout')).toBe(false)
   })
 
   test('substringPaths_DoNotMatch', () => {

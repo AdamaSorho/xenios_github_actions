@@ -1,8 +1,10 @@
 import { AuthTokens } from '@/domain/entities/AuthTokens'
+import { AuthUser } from '@/domain/entities/AuthUser'
 import { TokenStorage } from '@/domain/repositories/TokenStorage'
 
 const ACCESS_TOKEN_KEY = 'xenios_access_token'
 const REFRESH_TOKEN_KEY = 'xenios_refresh_token'
+const USER_KEY = 'xenios_user'
 const AUTH_COOKIE_NAME = 'xenios_has_token'
 
 /**
@@ -48,6 +50,23 @@ export class LocalTokenStorage implements TokenStorage {
     if (typeof window === 'undefined') return
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
     document.cookie = `${AUTH_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${this.secureFlag}`
+  }
+
+  getUser(): AuthUser | null {
+    if (typeof window === 'undefined') return null
+    const json = localStorage.getItem(USER_KEY)
+    if (!json) return null
+    try {
+      return JSON.parse(json) as AuthUser
+    } catch {
+      return null
+    }
+  }
+
+  setUser(user: AuthUser): void {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
   }
 }

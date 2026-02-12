@@ -44,34 +44,34 @@ export class AuthInterceptor {
     '/auth/login',
     '/auth/register',
     '/auth/refresh',
+    '/auth/logout',
   ]
 
   install(): void {
     const self = this
 
     apiClient.get = async function <T>(path: string) {
-      return self.withRefresh<T>(() => self.originalGet<T>(path), path)
+      return self.withRefresh<T>(() => self.originalGet<T>(path))
     }
 
     apiClient.post = async function <T>(path: string, body?: unknown) {
       if (self.isAuthEndpoint(path)) {
         return self.originalPost<T>(path, body)
       }
-      return self.withRefresh<T>(() => self.originalPost<T>(path, body), path)
+      return self.withRefresh<T>(() => self.originalPost<T>(path, body))
     }
 
     apiClient.put = async function <T>(path: string, body?: unknown) {
-      return self.withRefresh<T>(() => self.originalPut<T>(path, body), path)
+      return self.withRefresh<T>(() => self.originalPut<T>(path, body))
     }
 
     apiClient.delete = async function <T>(path: string) {
-      return self.withRefresh<T>(() => self.originalDelete<T>(path), path)
+      return self.withRefresh<T>(() => self.originalDelete<T>(path))
     }
   }
 
   private async withRefresh<T>(
     request: () => Promise<ApiResponse<T>>,
-    _path: string
   ): Promise<ApiResponse<T>> {
     const response = await request()
     if (!response.ok && response.error && this.isUnauthorized(response.error)) {

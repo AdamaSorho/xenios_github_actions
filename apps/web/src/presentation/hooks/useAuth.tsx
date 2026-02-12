@@ -38,7 +38,7 @@ export function AuthProvider({
   tokenStorage,
   tokenManager,
 }: AuthProviderProps) {
-  const [user, setUser] = useState<AuthUser | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(() => tokenStorage.getUser())
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,6 +49,7 @@ export function AuthProvider({
       try {
         const response = await loginUseCase.execute(credentials)
         tokenStorage.setTokens(response.tokens)
+        tokenStorage.setUser(response.user)
         tokenManager.setAuthToken(response.tokens.access_token)
         setUser(response.user)
       } catch (err) {
@@ -69,6 +70,7 @@ export function AuthProvider({
       try {
         const response = await registerUseCase.execute(input)
         tokenStorage.setTokens(response.tokens)
+        tokenStorage.setUser(response.user)
         tokenManager.setAuthToken(response.tokens.access_token)
         setUser(response.user)
       } catch (err) {

@@ -14,11 +14,17 @@ type userClaimsKey struct{}
 // UserClaims holds the parsed JWT claims available in the request context.
 type UserClaims struct {
 	Subject string
+	Role    string
+}
+
+// SetUserClaims stores user claims in the context. This is exported for testing.
+func SetUserClaims(ctx context.Context, claims *UserClaims) context.Context {
+	return context.WithValue(ctx, userClaimsKey{}, claims)
 }
 
 // JWTAuth returns middleware that validates JWT Bearer tokens.
 // In production (non-empty secret), tokens are cryptographically verified.
-// The parsed subject claim is stored in the request context.
+// The parsed subject and role claims are stored in the request context.
 func JWTAuth(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +48,6 @@ func JWTAuth(secret string) func(http.Handler) http.Handler {
 
 			if secret == "" {
 				// No secret configured — accept token without verification (development only).
-				// Extract claims without validation.
 				parser := jwt.NewParser()
 				token, _, err := parser.ParseUnverified(tokenStr, jwt.MapClaims{})
 				if err != nil {
@@ -55,7 +60,8 @@ func JWTAuth(secret string) func(http.Handler) http.Handler {
 					return
 				}
 				sub, _ := claims.GetSubject()
-				ctx := context.WithValue(r.Context(), userClaimsKey{}, &UserClaims{Subject: sub})
+				role, _ := claims["role"].(string)
+				ctx := context.WithValue(r.Context(), userClaimsKey{}, &UserClaims{Subject: sub, Role: role})
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -79,7 +85,8 @@ func JWTAuth(secret string) func(http.Handler) http.Handler {
 			}
 
 			sub, _ := claims.GetSubject()
-			ctx := context.WithValue(r.Context(), userClaimsKey{}, &UserClaims{Subject: sub})
+			role, _ := claims["role"].(string)
+			ctx := context.WithValue(r.Context(), userClaimsKey{}, &UserClaims{Subject: sub, Role: role})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

@@ -116,6 +116,42 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	}
 }
 
+func TestJWTAuth_ValidToken_ExtractsRole(t *testing.T) {
+	secret := "test-secret-key"
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "user-123",
+		"role": "coach",
+		"exp":  time.Now().Add(time.Hour).Unix(),
+	})
+	tokenStr, err := token.SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	var capturedClaims *UserClaims
+	handler := JWTAuth(secret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedClaims = GetUserClaims(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if capturedClaims == nil {
+		t.Fatal("expected non-nil user claims")
+	}
+	if capturedClaims.Role != "coach" {
+		t.Errorf("expected role 'coach', got '%s'", capturedClaims.Role)
+	}
+}
+
 func TestJWTAuth_ExpiredToken(t *testing.T) {
 	secret := "test-secret-key"
 
@@ -202,6 +238,40 @@ func TestJWTAuth_NoSecret_AcceptsToken(t *testing.T) {
 	}
 }
 
+func TestJWTAuth_NoSecret_ExtractsRole(t *testing.T) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  "dev-user",
+		"role": "admin",
+		"exp":  time.Now().Add(time.Hour).Unix(),
+	})
+	tokenStr, err := token.SignedString([]byte("any-key"))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	var capturedClaims *UserClaims
+	handler := JWTAuth("")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedClaims = GetUserClaims(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if capturedClaims == nil {
+		t.Fatal("expected non-nil claims")
+	}
+	if capturedClaims.Role != "admin" {
+		t.Errorf("expected role 'admin', got '%s'", capturedClaims.Role)
+	}
+}
+
 func TestJWTAuth_BearerCaseInsensitive(t *testing.T) {
 	secret := "test-secret"
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -229,6 +299,23 @@ func TestGetUserClaims_EmptyContext(t *testing.T) {
 	claims := GetUserClaims(context.Background())
 	if claims != nil {
 		t.Errorf("expected nil claims for empty context, got %v", claims)
+	}
+}
+
+func TestSetUserClaims_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	expected := &UserClaims{Subject: "user-42", Role: "coach"}
+	ctx = SetUserClaims(ctx, expected)
+
+	got := GetUserClaims(ctx)
+	if got == nil {
+		t.Fatal("expected non-nil claims")
+	}
+	if got.Subject != "user-42" {
+		t.Errorf("expected subject 'user-42', got '%s'", got.Subject)
+	}
+	if got.Role != "coach" {
+		t.Errorf("expected role 'coach', got '%s'", got.Role)
 	}
 }
 

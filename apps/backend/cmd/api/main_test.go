@@ -373,12 +373,15 @@ func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
 	}()
 
 	// Act
-	h, cleanup := setupHealthHandler()
+	h, pool, cleanup := setupHealthHandler()
 	defer cleanup()
 
 	// Assert - handler should be non-nil
 	if h == nil {
 		t.Error("expected non-nil handler when DATABASE_URL is not set")
+	}
+	if pool != nil {
+		t.Error("expected nil pool when DATABASE_URL is not set")
 	}
 }
 
@@ -395,12 +398,15 @@ func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
 	}()
 
 	// Act
-	h, cleanup := setupHealthHandler()
+	h, pool, cleanup := setupHealthHandler()
 	defer cleanup()
 
 	// Assert - handler should still be non-nil (graceful degradation)
 	if h == nil {
 		t.Error("expected non-nil handler even with invalid DATABASE_URL")
+	}
+	if pool != nil {
+		t.Error("expected nil pool with invalid DATABASE_URL")
 	}
 }
 
@@ -417,12 +423,15 @@ func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
 	}()
 
 	// Act
-	h, cleanup := setupHealthHandler()
+	h, pool, cleanup := setupHealthHandler()
 	defer cleanup()
 
 	// Assert - handler should still be non-nil (graceful degradation)
 	if h == nil {
 		t.Error("expected non-nil handler even with unreachable database")
+	}
+	if pool != nil {
+		t.Error("expected nil pool with unreachable database")
 	}
 }
 
@@ -437,7 +446,7 @@ func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
 	}()
 
 	// Act
-	_, cleanup := setupHealthHandler()
+	_, _, cleanup := setupHealthHandler()
 
 	// Assert - cleanup should be callable without panicking (no-op when no DB)
 	cleanup()

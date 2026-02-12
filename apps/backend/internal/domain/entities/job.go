@@ -2,8 +2,24 @@ package entities
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
+
+// ValidationError represents a domain validation error.
+// Handlers can use errors.As to distinguish validation errors from infrastructure errors.
+type ValidationError struct {
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}
+
+// NewValidationError creates a new ValidationError with a formatted message.
+func NewValidationError(format string, args ...interface{}) *ValidationError {
+	return &ValidationError{Message: fmt.Sprintf(format, args...)}
+}
 
 // JobType represents the type of background job.
 type JobType string

@@ -688,7 +688,7 @@ func TestMigrations_JSONBOnlyWhereNeeded(t *testing.T) {
 		"000003_create_sessions_tables.up.sql":     {"summary"},
 		"000004_create_health_data_tables.up.sql":  {"metrics"},
 		"000005_create_analytics_tables.up.sql":    {"factors", "metadata"},
-		"000008_create_job_queue.up.sql":           {"payload"},
+		"000008_create_job_queue.up.sql":           {"payload", "details"},
 	}
 
 	for _, f := range files {

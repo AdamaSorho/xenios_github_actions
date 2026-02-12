@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/xenios/backend/internal/domain/entities"
 	"github.com/xenios/backend/internal/domain/repository"
@@ -24,7 +23,7 @@ func NewEnqueueJobUseCase(jobQueue repository.JobQueue) *EnqueueJobUseCase {
 // Returns the created job or an error if the job type is invalid or enqueueing fails.
 func (uc *EnqueueJobUseCase) Execute(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
 	if !entities.IsValidJobType(jobType) {
-		return nil, fmt.Errorf("invalid job type: %q", jobType)
+		return nil, entities.NewValidationError("invalid job type: %q", jobType)
 	}
 
 	if payload == nil {

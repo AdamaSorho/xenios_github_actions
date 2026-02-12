@@ -2,6 +2,7 @@ package entities
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 )
@@ -242,6 +243,40 @@ func TestJobTypeConstants_Values(t *testing.T) {
 		if string(tc.jobType) != tc.expected {
 			t.Errorf("expected %q, got %q", tc.expected, string(tc.jobType))
 		}
+	}
+}
+
+func TestValidationError_Error_ReturnsMessage(t *testing.T) {
+	err := NewValidationError("invalid job type: %q", "bad_type")
+	expected := `invalid job type: "bad_type"`
+	if err.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, err.Error())
+	}
+}
+
+func TestValidationError_ImplementsError(t *testing.T) {
+	var err error = NewValidationError("test error")
+	if err == nil {
+		t.Error("expected non-nil error")
+	}
+}
+
+func TestValidationError_ErrorsAs(t *testing.T) {
+	err := NewValidationError("validation failed")
+	var validationErr *ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Error("expected errors.As to match ValidationError")
+	}
+	if validationErr.Message != "validation failed" {
+		t.Errorf("expected message %q, got %q", "validation failed", validationErr.Message)
+	}
+}
+
+func TestValidationError_ErrorsAs_NonValidationError(t *testing.T) {
+	err := errors.New("regular error")
+	var validationErr *ValidationError
+	if errors.As(err, &validationErr) {
+		t.Error("expected errors.As NOT to match ValidationError for regular error")
 	}
 }
 

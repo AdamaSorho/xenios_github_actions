@@ -128,7 +128,7 @@ func TestQueueHandler_EnqueueJob_MissingType(t *testing.T) {
 func TestQueueHandler_EnqueueJob_InvalidJobType(t *testing.T) {
 	enqueueUC := &mockEnqueueJobUseCase{
 		executeFunc: func(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
-			return nil, errors.New(`invalid job type: "invalid"`)
+			return nil, entities.NewValidationError("invalid job type: %q", jobType)
 		},
 	}
 	statusUC := &mockGetQueueStatusUseCase{}
@@ -438,7 +438,7 @@ func TestQueueHandler_EnqueueJob_OversizedBody_Returns400(t *testing.T) {
 func TestQueueHandler_EnqueueJob_ValidationError_Returns400(t *testing.T) {
 	enqueueUC := &mockEnqueueJobUseCase{
 		executeFunc: func(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
-			return nil, errors.New(`invalid job type: "unknown_type"`)
+			return nil, entities.NewValidationError("invalid job type: %q", jobType)
 		},
 	}
 	statusUC := &mockGetQueueStatusUseCase{}

@@ -3,8 +3,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/xenios/backend/internal/domain/entities"
 )
@@ -64,11 +64,12 @@ func (h *QueueHandler) EnqueueJob(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.enqueueUseCase.Execute(r.Context(), entities.JobType(req.Type), req.Payload)
 	if err != nil {
-		// Distinguish validation errors from infrastructure errors.
+		// Distinguish validation errors from infrastructure errors using typed errors.
 		// Validation errors (e.g., invalid job type) are safe to expose.
 		// Infrastructure errors (e.g., database failures) should be hidden.
-		if strings.HasPrefix(err.Error(), "invalid job type") {
-			respondError(w, http.StatusBadRequest, err.Error())
+		var validationErr *entities.ValidationError
+		if errors.As(err, &validationErr) {
+			respondError(w, http.StatusBadRequest, validationErr.Error())
 		} else {
 			respondError(w, http.StatusInternalServerError, "failed to enqueue job")
 		}

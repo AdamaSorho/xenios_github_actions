@@ -103,6 +103,12 @@ func TestEnqueueJobUseCase_Execute_InvalidJobType_ReturnsError(t *testing.T) {
 		t.Fatal("expected error for invalid job type")
 	}
 
+	// Verify it's a ValidationError (typed error, not string matching)
+	var validationErr *entities.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Errorf("expected ValidationError, got %T: %v", err, err)
+	}
+
 	expectedMsg := `invalid job type: "invalid_type"`
 	if err.Error() != expectedMsg {
 		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())

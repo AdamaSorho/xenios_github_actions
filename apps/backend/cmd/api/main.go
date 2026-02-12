@@ -143,7 +143,6 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeAudioCleanup,
 	}
 	for _, jt := range allJobTypes {
-		jt := jt // capture loop variable for closure
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil

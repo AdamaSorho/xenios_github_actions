@@ -23,12 +23,35 @@ func NewPostgresJobQueue(db *pgxpool.Pool) repository.JobQueue {
 	return &PostgresJobQueue{db: db}
 }
 
-// Enqueue adds a new job to the queue.
+// logJobEvent records a job lifecycle event in the job_events table.
+func logJobEvent(ctx context.Context, tx pgx.Tx, jobID string, eventType string, details map[string]interface{}) error {
+	detailsJSON, err := json.Marshal(details)
+	if err != nil {
+		return fmt.Errorf("marshal event details: %w", err)
+	}
+	_, err = tx.Exec(ctx,
+		`INSERT INTO job_events (job_id, event_type, details, created_at)
+		 VALUES ($1, $2, $3, now())`,
+		jobID, eventType, detailsJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("insert job event: %w", err)
+	}
+	return nil
+}
+
+// Enqueue adds a new job to the queue with an audit trail event.
 func (q *PostgresJobQueue) Enqueue(ctx context.Context, jobType entities.JobType, payload []byte) (*entities.Job, error) {
+	tx, err := q.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var job entities.Job
 	var rawPayload []byte
 
-	err := q.db.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`INSERT INTO jobs (type, payload, status, attempt, max_attempts, created_at)
 		 VALUES ($1, $2, $3, 0, $4, now())
 		 RETURNING id, type, payload, status, attempt, max_attempts, created_at`,
@@ -41,6 +64,17 @@ func (q *PostgresJobQueue) Enqueue(ctx context.Context, jobType entities.JobType
 		return nil, fmt.Errorf("insert job: %w", err)
 	}
 	job.Payload = json.RawMessage(rawPayload)
+
+	// Log audit event
+	if err := logJobEvent(ctx, tx, job.ID, "job_created", map[string]interface{}{
+		"type": string(jobType),
+	}); err != nil {
+		return nil, fmt.Errorf("log enqueue event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
 
 	return &job, nil
 }
@@ -118,10 +152,16 @@ func (q *PostgresJobQueue) Dequeue(ctx context.Context, jobTypes []entities.JobT
 	return &job, nil
 }
 
-// Complete marks a job as successfully completed.
+// Complete marks a job as successfully completed with an audit trail event.
 func (q *PostgresJobQueue) Complete(ctx context.Context, jobID string) error {
+	tx, err := q.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	now := time.Now()
-	result, err := q.db.Exec(ctx,
+	result, err := tx.Exec(ctx,
 		`UPDATE jobs SET status = $1, completed_at = $2 WHERE id = $3 AND status = $4`,
 		string(entities.JobStatusCompleted), now, jobID, string(entities.JobStatusActive),
 	)
@@ -132,7 +172,12 @@ func (q *PostgresJobQueue) Complete(ctx context.Context, jobID string) error {
 		return fmt.Errorf("job %s not found or not in active state", jobID)
 	}
 
-	return nil
+	// Log audit event
+	if err := logJobEvent(ctx, tx, jobID, "job_completed", nil); err != nil {
+		return fmt.Errorf("log complete event: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 // Fail marks a job as failed. If retries remain, schedules a retry with exponential backoff.
@@ -174,6 +219,15 @@ func (q *PostgresJobQueue) Fail(ctx context.Context, jobID string, errMsg string
 		if err != nil {
 			return fmt.Errorf("update job for retry: %w", err)
 		}
+
+		// Log retry event
+		if err := logJobEvent(ctx, tx, jobID, "job_failed_retry", map[string]interface{}{
+			"error":       errMsg,
+			"attempt":     job.Attempt,
+			"retry_after": retryAfter.Format(time.RFC3339),
+		}); err != nil {
+			return fmt.Errorf("log retry event: %w", err)
+		}
 	} else {
 		// Move to dead letter queue
 		_, err = tx.Exec(ctx,
@@ -192,6 +246,14 @@ func (q *PostgresJobQueue) Fail(ctx context.Context, jobID string, errMsg string
 		)
 		if err != nil {
 			return fmt.Errorf("update job as permanently failed: %w", err)
+		}
+
+		// Log dead letter event
+		if err := logJobEvent(ctx, tx, jobID, "job_dead_lettered", map[string]interface{}{
+			"error":    errMsg,
+			"attempts": job.Attempt,
+		}); err != nil {
+			return fmt.Errorf("log dead letter event: %w", err)
 		}
 	}
 

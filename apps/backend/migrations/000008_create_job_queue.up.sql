@@ -54,10 +54,13 @@ CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs (type);
 -- Enable Row Level Security
 ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
 
--- RLS policy: allow the service role (application user) full access to jobs
+-- RLS policy: restrict job queue access to the service role only.
+-- The backend application connects as the service role; other roles (e.g., anon,
+-- authenticated) should not directly access the jobs table.
 DROP POLICY IF EXISTS jobs_service_all ON jobs;
 CREATE POLICY jobs_service_all ON jobs
     FOR ALL
+    TO service_role
     USING (true)
     WITH CHECK (true);
 
@@ -80,9 +83,36 @@ CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_failed_at ON jobs_dead_letter (f
 -- Enable Row Level Security
 ALTER TABLE jobs_dead_letter ENABLE ROW LEVEL SECURITY;
 
--- RLS policy: allow the service role (application user) full access to dead letter queue
+-- RLS policy: restrict dead letter queue access to the service role only.
 DROP POLICY IF EXISTS jobs_dead_letter_service_all ON jobs_dead_letter;
 CREATE POLICY jobs_dead_letter_service_all ON jobs_dead_letter
     FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+-- Job events table for job lifecycle audit trail.
+-- Separate from events_audit (migration 000005) which requires actor_id (user context).
+-- Job events are system-generated and have no user actor.
+CREATE TABLE IF NOT EXISTS job_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL,
+    event_type TEXT NOT NULL,
+    details JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events (job_id);
+CREATE INDEX IF NOT EXISTS idx_job_events_event_type ON job_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_job_events_created_at ON job_events (created_at);
+
+-- Enable Row Level Security
+ALTER TABLE job_events ENABLE ROW LEVEL SECURITY;
+
+-- RLS policy: restrict job events access to the service role only.
+DROP POLICY IF EXISTS job_events_service_all ON job_events;
+CREATE POLICY job_events_service_all ON job_events
+    FOR ALL
+    TO service_role
     USING (true)
     WITH CHECK (true);

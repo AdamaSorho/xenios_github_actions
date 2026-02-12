@@ -1,12 +1,15 @@
-name: Claude Bug Fix
+name: Claude Fix
 
 on:
-  issues:
-    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
-  fix-bug:
-    if: github.event.label.name == 'claude-fix'
+  fix-pr:
+    if: |
+      contains(github.event.comment.body, '@claude-fix')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,8 +18,85 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Get PR info and parse command
+        id: pr-info
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+
+            // Determine PR number
+            let prNumber;
+            if (context.eventName === 'issue_comment' && context.payload.issue.pull_request) {
+              prNumber = context.payload.issue.number;
+            } else if (context.eventName === 'pull_request_review_comment') {
+              prNumber = context.payload.pull_request.number;
+            } else {
+              core.setFailed('This command only works on pull requests');
+              return;
+            }
+
+            // Get PR branch
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            // Parse which feedback to fix
+            const lowerComment = comment.toLowerCase();
+            const fixTDD = lowerComment.includes('tdd quality gate report');
+            const fixReview = lowerComment.includes('claude code review');
+            const fixBoth = fixTDD && fixReview;
+
+            // Default to both if neither is specified (just "@claude-fix" alone)
+            const targetTDD = fixTDD || (!fixTDD && !fixReview);
+            const targetReview = fixReview || (!fixTDD && !fixReview);
+
+            // Get all PR comments to find the relevant feedback
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100
+            });
+
+            // Find the LAST TDD Quality Gate Report
+            let tddReport = '';
+            if (targetTDD) {
+              const tddComments = comments.filter(c => c.body.includes('TDD Quality Gate Report'));
+              if (tddComments.length > 0) {
+                tddReport = tddComments[tddComments.length - 1].body;
+              }
+            }
+
+            // Find the LAST Claude Code Review
+            let reviewReport = '';
+            if (targetReview) {
+              const reviewComments = comments.filter(c => c.body.includes('Claude Code Review'));
+              if (reviewComments.length > 0) {
+                reviewReport = reviewComments[reviewComments.length - 1].body;
+              }
+            }
+
+            // Build a target description
+            let target = '';
+            if (targetTDD && targetReview) target = 'TDD Quality Gate Report AND Claude Code Review';
+            else if (targetTDD) target = 'TDD Quality Gate Report';
+            else target = 'Claude Code Review';
+
+            core.setOutput('branch', pr.head.ref);
+            core.setOutput('pr_number', prNumber.toString());
+            core.setOutput('target', target);
+            core.setOutput('tdd_report', tddReport);
+            core.setOutput('review_report', reviewReport);
+
+      - name: Checkout PR branch
         uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr-info.outputs.branch }}
+          token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -37,64 +117,75 @@ jobs:
           git config --global user.name "Claude"
           git config --global user.email "claude[bot]@users.noreply.github.com"
 
-      - name: Claude Fixes Bug
+      - name: Claude Fixes PR
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TDD_REPORT: ${{ steps.pr-info.outputs.tdd_report }}
+          REVIEW_REPORT: ${{ steps.pr-info.outputs.review_report }}
         with:
-          # Using Claude Max subscription via OAuth token (flat $200/month)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: '@claude-fix'
           allowed_bots: "claude,claude[bot],dependabot[bot],renovate[bot]"
           prompt: |
-            BUG REPORT: #${{ github.event.issue.number }}
-            TITLE: ${{ github.event.issue.title }}
+            You are an autonomous code fixer for the Xenios platform.
+            Branch: ${{ steps.pr-info.outputs.branch }}
+            PR: #${{ steps.pr-info.outputs.pr_number }}
+            Target: ${{ steps.pr-info.outputs.target }}
 
-            You are fixing a bug in the Xenios platform.
+            ## YOUR MISSION
 
-            ## Instructions
+            Fix ALL issues identified in the feedback below. You MUST:
+            1. Read the feedback carefully
+            2. Read the relevant source and test files
+            3. Make code changes to address every issue
+            4. Run tests to verify your fixes
+            5. Commit with `git add <specific files>` then `git commit -m "[Fix] <what was fixed>"`
+            6. Push with `git push origin ${{ steps.pr-info.outputs.branch }}`
 
-            1. READ the bug report thoroughly
-            2. REPRODUCE the issue to understand it
-            3. IDENTIFY the root cause (don't just fix symptoms)
-            4. WRITE a failing test that captures the bug
-            5. FIX the bug with minimal changes
-            6. VERIFY the test passes
-            7. RUN the full test suite to check for regressions
-            8. CREATE a PR with:
-               - Root cause explanation
-               - Fix description
-               - Test that verifies the fix
+            NEVER respond with only text. ALWAYS make code changes, commit, and push.
 
-            ## Architecture Rules (Must Follow)
+            ## FEEDBACK TO FIX
 
-            - Dependencies flow INWARD only
-            - Domain layer has NO external dependencies
-            - Backend is the ONLY app that accesses the database
-            - Web and Mobile call Backend API, never database directly
-            - No ORMs allowed in Backend (use pgx/raw SQL only)
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '### TDD Quality Gate Report' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && 'Read the TDD_REPORT environment variable for the full report. Key areas to fix:' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Hard blockers (build failures, SQL injection)' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Low test coverage (target 80%+)' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Missing test-before-code pattern' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Poor test:code ratio (add more tests)' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Architecture violations' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'TDD') && '- Lint/vet/security issues' || '' }}
 
-            ## Bug Fix Best Practices
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '### Claude Code Review' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && 'Read the REVIEW_REPORT environment variable for the full review. Fix:' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- All critical issues listed under "Critical Issues (must fix)"' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Any category scored 1/5 or 2/5' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Security vulnerabilities' || '' }}
+            ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Database rule violations' || '' }}
 
-            - Fix the root cause, not just the symptom
-            - Add tests to prevent regression
-            - Keep changes focused and minimal
-            - Document why the bug occurred
+            ## HOW TO READ THE FEEDBACK
+
+            The full feedback reports are in environment variables:
+            - TDD report: Run `echo "$TDD_REPORT"` to see it
+            - Review report: Run `echo "$REVIEW_REPORT"` to see it
+
+            Also run `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to see all PR comments for additional context.
+
+            ## Architecture Rules
+
+            - Clean Architecture: Domain -> Application -> Infrastructure -> Presentation
+            - Backend (Go) accesses database; Web/Mobile call Backend API only
+            - No ORMs - raw SQL with pgx/sqlx only
+            - TDD: write tests first, 80% coverage minimum
+            - Parameterized queries only ($1, $2) - no string interpolation in SQL
 
             ## IMPORTANT: Non-Interactive Mode
 
-            You are running in a CI environment with NO human interaction.
-            - NEVER stop to ask for clarification - make reasonable assumptions
-            - ALWAYS document assumptions in the PR description
-            - If you cannot reproduce the bug, document what you tried and
-              implement a best-effort fix based on the bug report
+            You are running in CI with NO human interaction.
+            - NEVER stop to ask for clarification
+            - Fix everything you can, document anything you can't
+            - ALWAYS commit and push your changes
           claude_args: |
-            --max-turns 30
+            --max-turns 50
             --model claude-opus-4-6
             --allowedTools Bash,Edit,Read,Write,Glob,Grep,WebSearch,WebFetch
-
-      - name: Add fix label
-        if: success()
-        run: |
-          gh issue edit ${{ github.event.issue.number }} --add-label "fix-complete"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

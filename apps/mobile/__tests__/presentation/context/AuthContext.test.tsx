@@ -6,17 +6,8 @@ import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { GetAuthStateUseCase } from '@/application/usecases/GetAuthStateUseCase'
-import { AuthenticatedApiClient } from '@/infrastructure/api/AuthenticatedApiClient'
-import { AuthUser } from '@/domain/entities/AuthUser'
-
-const mockUser: AuthUser = {
-  id: 'user-1',
-  email: 'test@example.com',
-  name: 'Test User',
-  role: 'coach',
-  createdAt: '2024-01-01T00:00:00Z',
-  updatedAt: '2024-01-01T00:00:00Z',
-}
+import { AuthClientConfigurator } from '@/domain/repositories/AuthClientConfigurator'
+import { mockUser } from '../../helpers/mocks'
 
 function createMockDeps(): AuthProviderDeps {
   return {
@@ -36,7 +27,7 @@ function createMockDeps(): AuthProviderDeps {
       configureAuth: jest.fn(),
       setAccessToken: jest.fn(),
       clearAuth: jest.fn(),
-    } as unknown as AuthenticatedApiClient,
+    } as AuthClientConfigurator,
   }
 }
 

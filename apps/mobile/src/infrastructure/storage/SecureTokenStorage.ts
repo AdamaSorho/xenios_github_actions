@@ -4,6 +4,17 @@ import * as Keychain from 'react-native-keychain'
 
 const KEYCHAIN_SERVICE = 'com.xenios.auth'
 
+function isValidAuthTokens(value: unknown): value is AuthTokens {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as AuthTokens).accessToken === 'string' &&
+    (value as AuthTokens).accessToken.length > 0 &&
+    typeof (value as AuthTokens).refreshToken === 'string' &&
+    (value as AuthTokens).refreshToken.length > 0
+  )
+}
+
 export class SecureTokenStorage implements TokenStorageRepository {
   async saveTokens(tokens: AuthTokens): Promise<void> {
     const data = JSON.stringify(tokens)
@@ -22,7 +33,11 @@ export class SecureTokenStorage implements TokenStorageRepository {
     }
 
     try {
-      return JSON.parse(credentials.password) as AuthTokens
+      const parsed: unknown = JSON.parse(credentials.password)
+      if (!isValidAuthTokens(parsed)) {
+        return null
+      }
+      return parsed
     } catch {
       return null
     }

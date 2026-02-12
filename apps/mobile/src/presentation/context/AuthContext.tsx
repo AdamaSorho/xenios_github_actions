@@ -5,7 +5,7 @@ import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { GetAuthStateUseCase } from '@/application/usecases/GetAuthStateUseCase'
-import type { AuthenticatedApiClient } from '@/infrastructure/api/AuthenticatedApiClient'
+import type { AuthClientConfigurator } from '@/domain/repositories/AuthClientConfigurator'
 
 export interface AuthContextValue {
   user: AuthUser | null
@@ -25,7 +25,7 @@ export interface AuthProviderDeps {
   registerUseCase: RegisterUseCase
   logoutUseCase: LogoutUseCase
   getAuthStateUseCase: GetAuthStateUseCase
-  authenticatedApiClient: AuthenticatedApiClient
+  authenticatedApiClient: AuthClientConfigurator
 }
 
 interface AuthProviderProps {

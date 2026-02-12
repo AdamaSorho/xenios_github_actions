@@ -168,7 +168,7 @@ describe('ApiAuthRepository', () => {
   })
 
   describe('logout', () => {
-    it('should call logout endpoint with token', async () => {
+    it('should call logout endpoint', async () => {
       mockApiClient.post.mockResolvedValue({
         ok: true,
         data: { message: 'logged out successfully' },
@@ -177,7 +177,7 @@ describe('ApiAuthRepository', () => {
 
       await repo.logout('access-token')
 
-      expect(mockApiClient.setAuthToken).toHaveBeenCalledWith('access-token')
+      expect(mockApiClient.setAuthToken).not.toHaveBeenCalled()
       expect(mockApiClient.post).toHaveBeenCalledWith('/auth/logout')
     })
 

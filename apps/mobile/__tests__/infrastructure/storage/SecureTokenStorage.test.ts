@@ -77,6 +77,71 @@ describe('SecureTokenStorage', () => {
 
       expect(result).toBeNull()
     })
+
+    it('should return null when parsed JSON is missing accessToken', async () => {
+      mockKeychain.getGenericPassword.mockResolvedValue({
+        username: 'auth_tokens',
+        password: JSON.stringify({ refreshToken: 'refresh-456' }),
+        service: 'com.xenios.auth',
+        storage: 'keychain',
+      } as any)
+
+      const result = await storage.getTokens()
+
+      expect(result).toBeNull()
+    })
+
+    it('should return null when parsed JSON is missing refreshToken', async () => {
+      mockKeychain.getGenericPassword.mockResolvedValue({
+        username: 'auth_tokens',
+        password: JSON.stringify({ accessToken: 'access-123' }),
+        service: 'com.xenios.auth',
+        storage: 'keychain',
+      } as any)
+
+      const result = await storage.getTokens()
+
+      expect(result).toBeNull()
+    })
+
+    it('should return null when parsed JSON has empty accessToken', async () => {
+      mockKeychain.getGenericPassword.mockResolvedValue({
+        username: 'auth_tokens',
+        password: JSON.stringify({ accessToken: '', refreshToken: 'refresh-456' }),
+        service: 'com.xenios.auth',
+        storage: 'keychain',
+      } as any)
+
+      const result = await storage.getTokens()
+
+      expect(result).toBeNull()
+    })
+
+    it('should return null when parsed JSON has non-string tokens', async () => {
+      mockKeychain.getGenericPassword.mockResolvedValue({
+        username: 'auth_tokens',
+        password: JSON.stringify({ accessToken: 123, refreshToken: true }),
+        service: 'com.xenios.auth',
+        storage: 'keychain',
+      } as any)
+
+      const result = await storage.getTokens()
+
+      expect(result).toBeNull()
+    })
+
+    it('should return null when parsed JSON is an array', async () => {
+      mockKeychain.getGenericPassword.mockResolvedValue({
+        username: 'auth_tokens',
+        password: JSON.stringify(['access', 'refresh']),
+        service: 'com.xenios.auth',
+        storage: 'keychain',
+      } as any)
+
+      const result = await storage.getTokens()
+
+      expect(result).toBeNull()
+    })
   })
 
   describe('clearTokens', () => {

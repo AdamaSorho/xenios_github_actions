@@ -5,7 +5,7 @@ import {
 } from '@/domain/entities/AuthCredentials'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
-import { ValidationError } from '@/application/errors/ValidationError'
+import { ValidationError } from '@/domain/errors/ValidationError'
 
 export interface RegisterOutput {
   user: AuthUser

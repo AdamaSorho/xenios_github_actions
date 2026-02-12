@@ -1,11 +1,11 @@
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
-import { ValidationError } from '@/application/errors/ValidationError'
+import { ValidationError } from '@/domain/errors/ValidationError'
 import { AuthRepository, AuthResponse } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthUser } from '@/domain/entities/AuthUser'
-import { AuthTokens } from '@/domain/entities/AuthTokens'
+import { createMockAuthRepo, createMockTokenStorage, mockTokens } from '../../helpers/mocks'
 
-const mockUser: AuthUser = {
+const registerUser: AuthUser = {
   id: 'user-1',
   email: 'new@example.com',
   name: 'New User',
@@ -14,32 +14,9 @@ const mockUser: AuthUser = {
   updatedAt: '2024-01-01T00:00:00Z',
 }
 
-const mockTokens: AuthTokens = {
-  accessToken: 'access-token-123',
-  refreshToken: 'refresh-token-456',
-}
-
 const mockAuthResponse: AuthResponse = {
-  user: mockUser,
+  user: registerUser,
   tokens: mockTokens,
-}
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refreshToken: jest.fn(),
-    logout: jest.fn(),
-    getCurrentUser: jest.fn(),
-  }
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorageRepository> {
-  return {
-    saveTokens: jest.fn(),
-    getTokens: jest.fn(),
-    clearTokens: jest.fn(),
-  }
 }
 
 describe('RegisterUseCase', () => {
@@ -66,7 +43,7 @@ describe('RegisterUseCase', () => {
 
     const result = await useCase.execute(validCredentials)
 
-    expect(result.user).toEqual(mockUser)
+    expect(result.user).toEqual(registerUser)
     expect(result.accessToken).toBe('access-token-123')
     expect(authRepo.register).toHaveBeenCalledWith(validCredentials)
     expect(tokenStorage.saveTokens).toHaveBeenCalledWith(mockTokens)

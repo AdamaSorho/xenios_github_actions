@@ -2,6 +2,7 @@ import { RefreshTokenUseCase } from '@/application/usecases/RefreshTokenUseCase'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthTokens } from '@/domain/entities/AuthTokens'
+import { createMockAuthRepo, createMockTokenStorage } from '../../helpers/mocks'
 
 const currentTokens: AuthTokens = {
   accessToken: 'old-access',
@@ -11,24 +12,6 @@ const currentTokens: AuthTokens = {
 const newTokens: AuthTokens = {
   accessToken: 'new-access',
   refreshToken: 'new-refresh',
-}
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refreshToken: jest.fn(),
-    logout: jest.fn(),
-    getCurrentUser: jest.fn(),
-  }
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorageRepository> {
-  return {
-    saveTokens: jest.fn(),
-    getTokens: jest.fn(),
-    clearTokens: jest.fn(),
-  }
 }
 
 describe('RefreshTokenUseCase', () => {

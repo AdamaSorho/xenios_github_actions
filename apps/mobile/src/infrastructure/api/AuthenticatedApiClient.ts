@@ -1,8 +1,9 @@
 import { apiClient } from '@xenios/api-client'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
+import { AuthClientConfigurator } from '@/domain/repositories/AuthClientConfigurator'
 
-export class AuthenticatedApiClient {
+export class AuthenticatedApiClient implements AuthClientConfigurator {
   private isRefreshing = false
   private refreshPromise: Promise<void> | null = null
 

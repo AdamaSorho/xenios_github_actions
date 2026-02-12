@@ -2,28 +2,11 @@ import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthTokens } from '@/domain/entities/AuthTokens'
+import { createMockAuthRepo, createMockTokenStorage } from '../../helpers/mocks'
 
 const storedTokens: AuthTokens = {
   accessToken: 'access-token',
   refreshToken: 'refresh-token',
-}
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refreshToken: jest.fn(),
-    logout: jest.fn(),
-    getCurrentUser: jest.fn(),
-  }
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorageRepository> {
-  return {
-    saveTokens: jest.fn(),
-    getTokens: jest.fn(),
-    clearTokens: jest.fn(),
-  }
 }
 
 describe('LogoutUseCase', () => {

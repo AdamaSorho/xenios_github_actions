@@ -30,7 +30,7 @@ export class GetAuthStateUseCase {
       }
     } catch {
       return {
-        isAuthenticated: true,
+        isAuthenticated: false,
         accessToken: tokens.accessToken,
         user: null,
       }

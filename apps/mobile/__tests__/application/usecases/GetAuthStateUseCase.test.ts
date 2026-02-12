@@ -2,38 +2,11 @@ import { GetAuthStateUseCase } from '@/application/usecases/GetAuthStateUseCase'
 import { TokenStorageRepository } from '@/domain/repositories/TokenStorageRepository'
 import { AuthRepository } from '@/domain/repositories/AuthRepository'
 import { AuthTokens } from '@/domain/entities/AuthTokens'
-import { AuthUser } from '@/domain/entities/AuthUser'
+import { createMockAuthRepo, createMockTokenStorage, mockUser } from '../../helpers/mocks'
 
 const storedTokens: AuthTokens = {
   accessToken: 'access-token',
   refreshToken: 'refresh-token',
-}
-
-const mockUser: AuthUser = {
-  id: 'user-1',
-  email: 'test@example.com',
-  name: 'Test User',
-  role: 'coach',
-  createdAt: '2024-01-01T00:00:00Z',
-  updatedAt: '2024-01-01T00:00:00Z',
-}
-
-function createMockTokenStorage(): jest.Mocked<TokenStorageRepository> {
-  return {
-    saveTokens: jest.fn(),
-    getTokens: jest.fn(),
-    clearTokens: jest.fn(),
-  }
-}
-
-function createMockAuthRepo(): jest.Mocked<AuthRepository> {
-  return {
-    login: jest.fn(),
-    register: jest.fn(),
-    refreshToken: jest.fn(),
-    logout: jest.fn(),
-    getCurrentUser: jest.fn(),
-  }
 }
 
 describe('GetAuthStateUseCase', () => {
@@ -68,13 +41,13 @@ describe('GetAuthStateUseCase', () => {
     expect(state.user).toBeNull()
   })
 
-  it('should return authenticated with null user when getCurrentUser fails', async () => {
+  it('should return unauthenticated with null user when getCurrentUser fails', async () => {
     tokenStorage.getTokens.mockResolvedValue(storedTokens)
     authRepo.getCurrentUser.mockRejectedValue(new Error('Network error'))
 
     const state = await useCase.execute()
 
-    expect(state.isAuthenticated).toBe(true)
+    expect(state.isAuthenticated).toBe(false)
     expect(state.accessToken).toBe('access-token')
     expect(state.user).toBeNull()
   })

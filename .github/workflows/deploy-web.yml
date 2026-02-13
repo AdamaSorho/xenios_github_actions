@@ -55,6 +55,7 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev/api'
           working-directory: ./apps/web
 
       - name: Comment Preview URL
@@ -84,6 +85,7 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev/api'
           working-directory: ./apps/web
           alias-domains: staging.xenios.app
 
@@ -105,5 +107,5 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+          vercel-args: '--prod --build-env NEXT_PUBLIC_API_URL=https://api.xenios.app/api'
           working-directory: ./apps/web

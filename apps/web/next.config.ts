@@ -7,7 +7,15 @@ if (!apiUrl && process.env.NODE_ENV === 'production') {
     'Set NEXT_PUBLIC_API_URL in production to restrict connections to the correct API origin.'
   )
 }
-const connectSrc = apiUrl || 'http://localhost:8080'
+// CSP connect-src needs origin only (no path), e.g. https://example.com
+let connectSrc = 'http://localhost:8080'
+if (apiUrl) {
+  try {
+    connectSrc = new URL(apiUrl).origin
+  } catch {
+    connectSrc = apiUrl
+  }
+}
 
 const securityHeaders = [
   {

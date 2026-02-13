@@ -1,17 +1,19 @@
 name: Deploy Mobile
 
+# Disabled until EAS credentials (iOS/Android signing) are configured.
+# To re-enable, uncomment the push and pull_request triggers below.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/mobile/**'
-      - 'packages/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'apps/mobile/**'
-      - 'packages/**'
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'apps/mobile/**'
+  #     - 'packages/**'
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - 'apps/mobile/**'
+  #     - 'packages/**'
 
 jobs:
   test:

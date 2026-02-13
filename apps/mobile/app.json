@@ -21,9 +21,18 @@
       "bundler": "metro",
       "output": "static"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "722bdc63-6ebe-4fa1-abc3-69440309290d"
+      }
+    },
+    "owner": "xenios-mvp"
   }
 }

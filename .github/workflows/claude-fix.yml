@@ -49,6 +49,13 @@ jobs:
             const fixReview = lowerComment.includes('claude code review');
             const fixConflicts = lowerComment.includes('conflicts');
 
+            // Parse custom message: @claude-fix -m "message" or @claude-fix -m message
+            let customMessage = '';
+            const msgMatch = comment.match(/@claude-fix\s+-m\s+(?:"([^"]+)"|'([^']+)'|(.+?))\s*$/im);
+            if (msgMatch) {
+              customMessage = (msgMatch[1] || msgMatch[2] || msgMatch[3] || '').trim();
+            }
+
             // If conflicts mode, skip feedback fetching
             if (fixConflicts) {
               core.setOutput('branch', pr.head.ref);
@@ -57,12 +64,25 @@ jobs:
               core.setOutput('target', 'conflicts');
               core.setOutput('tdd_report', '');
               core.setOutput('review_report', '');
+              core.setOutput('custom_message', '');
+              return;
+            }
+
+            // If custom message mode, skip feedback fetching
+            if (customMessage && !fixTDD && !fixReview) {
+              core.setOutput('branch', pr.head.ref);
+              core.setOutput('base_branch', pr.base.ref);
+              core.setOutput('pr_number', prNumber.toString());
+              core.setOutput('target', 'custom');
+              core.setOutput('tdd_report', '');
+              core.setOutput('review_report', '');
+              core.setOutput('custom_message', customMessage);
               return;
             }
 
             // Default to both if neither is specified (just "@claude-fix" alone)
-            const targetTDD = fixTDD || (!fixTDD && !fixReview);
-            const targetReview = fixReview || (!fixTDD && !fixReview);
+            const targetTDD = fixTDD || (!fixTDD && !fixReview && !customMessage);
+            const targetReview = fixReview || (!fixTDD && !fixReview && !customMessage);
 
             // Get all PR comments to find the relevant feedback
             const { data: comments } = await github.rest.issues.listComments({
@@ -102,6 +122,7 @@ jobs:
             core.setOutput('target', target);
             core.setOutput('tdd_report', tddReport);
             core.setOutput('review_report', reviewReport);
+            core.setOutput('custom_message', customMessage);
 
       - name: Checkout PR branch
         uses: actions/checkout@v6
@@ -169,6 +190,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TDD_REPORT: ${{ steps.pr-info.outputs.tdd_report }}
           REVIEW_REPORT: ${{ steps.pr-info.outputs.review_report }}
+          CUSTOM_MESSAGE: ${{ steps.pr-info.outputs.custom_message }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: '@claude-fix'
@@ -209,11 +231,15 @@ jobs:
             ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Security vulnerabilities' || '' }}
             ${{ contains(steps.pr-info.outputs.target, 'Claude Code Review') && '- Database rule violations' || '' }}
 
+            ${{ steps.pr-info.outputs.custom_message != '' && '### Custom Instructions' || '' }}
+            ${{ steps.pr-info.outputs.custom_message != '' && 'The user provided specific fix instructions. Read the CUSTOM_MESSAGE environment variable for the full message. Follow those instructions exactly.' || '' }}
+
             ## HOW TO READ THE FEEDBACK
 
             The full feedback reports are in environment variables:
             - TDD report: Run `echo "$TDD_REPORT"` to see it
             - Review report: Run `echo "$REVIEW_REPORT"` to see it
+            - Custom message: Run `echo "$CUSTOM_MESSAGE"` to see it
 
             Also run `gh pr view ${{ steps.pr-info.outputs.pr_number }} --comments` to see all PR comments for additional context.
 

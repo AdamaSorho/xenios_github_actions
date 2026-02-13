@@ -1,6 +1,7 @@
 name: Deploy Web
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -58,7 +59,7 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev'
+          vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev/api'
 
       - name: Comment Preview URL
         uses: actions/github-script@v8
@@ -87,7 +88,7 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev'
+          vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev/api'
           alias-domains: staging.xenios.app
 
   deploy-production:
@@ -108,4 +109,4 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod --build-env NEXT_PUBLIC_API_URL=https://api.xenios.app'
+          vercel-args: '--prod --build-env NEXT_PUBLIC_API_URL=https://api.xenios.app/api'

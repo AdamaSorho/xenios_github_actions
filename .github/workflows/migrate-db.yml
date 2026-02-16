@@ -41,12 +41,16 @@ jobs:
 
           # Get current version and check if dirty
           CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
+          echo "Current version output: $CURRENT_VERSION"
 
-          if echo "$CURRENT_VERSION" | grep -q "dirty"; then
+          if echo "$CURRENT_VERSION" | grep -q "Dirty"; then
             echo "Database is dirty. Extracting version number..."
-            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | grep -oP '(?<=version )\d+')
-            echo "Forcing clean version $(($DIRTY_VERSION - 1))..."
-            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $(($DIRTY_VERSION - 1))
+            # Extract version number using sed (more portable than grep -P)
+            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | sed -n 's/.*version \([0-9]*\).*/\1/p')
+            echo "Dirty version: $DIRTY_VERSION"
+            CLEAN_VERSION=$((DIRTY_VERSION - 1))
+            echo "Forcing clean version $CLEAN_VERSION..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
           fi
 
           # Wait a moment for DB to settle
@@ -96,12 +100,16 @@ jobs:
 
           # Get current version and check if dirty
           CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
+          echo "Current version output: $CURRENT_VERSION"
 
-          if echo "$CURRENT_VERSION" | grep -q "dirty"; then
+          if echo "$CURRENT_VERSION" | grep -q "Dirty"; then
             echo "Database is dirty. Extracting version number..."
-            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | grep -oP '(?<=version )\d+')
-            echo "Forcing clean version $(($DIRTY_VERSION - 1))..."
-            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $(($DIRTY_VERSION - 1))
+            # Extract version number using sed (more portable than grep -P)
+            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | sed -n 's/.*version \([0-9]*\).*/\1/p')
+            echo "Dirty version: $DIRTY_VERSION"
+            CLEAN_VERSION=$((DIRTY_VERSION - 1))
+            echo "Forcing clean version $CLEAN_VERSION..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
           fi
 
           # Wait a moment for DB to settle

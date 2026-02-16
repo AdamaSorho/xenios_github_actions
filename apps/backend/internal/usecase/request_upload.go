@@ -107,11 +107,17 @@ func (uc *RequestUploadUseCase) Execute(ctx context.Context, input RequestUpload
 		return nil, fmt.Errorf("generate upload url: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, input.CoachID, "artifact.upload_requested", "artifact", created.ID, map[string]interface{}{
-		"file_name":    input.FileName,
-		"file_size":    input.FileSize,
-		"content_type": input.ContentType,
-		"client_id":    input.ClientID,
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    input.CoachID,
+		Action:     "artifact.upload_requested",
+		EntityType: "artifact",
+		EntityID:   created.ID,
+		Metadata: map[string]interface{}{
+			"file_name":    input.FileName,
+			"file_size":    input.FileSize,
+			"content_type": input.ContentType,
+			"client_id":    input.ClientID,
+		},
 	})
 
 	return &RequestUploadOutput{

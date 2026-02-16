@@ -37,10 +37,17 @@ jobs:
       - name: Retry Migration (Rollback + Up)
         if: steps.migrate_up.outcome == 'failure'
         run: |
-          echo "Migration failed. Attempting rollback and retry..."
+          echo "Migration failed. Attempting recovery..."
 
-          # Roll back the last migration that failed
-          migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
+          # Get current version and check if dirty
+          CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
+
+          if echo "$CURRENT_VERSION" | grep -q "dirty"; then
+            echo "Database is dirty. Extracting version number..."
+            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | grep -oP '(?<=version )\d+')
+            echo "Forcing clean version $(($DIRTY_VERSION - 1))..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $(($DIRTY_VERSION - 1))
+          fi
 
           # Wait a moment for DB to settle
           sleep 2
@@ -85,10 +92,17 @@ jobs:
       - name: Retry Migration (Rollback + Up)
         if: steps.migrate_up_prod.outcome == 'failure'
         run: |
-          echo "Migration failed. Attempting rollback and retry..."
+          echo "Migration failed. Attempting recovery..."
 
-          # Roll back the last migration that failed
-          migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
+          # Get current version and check if dirty
+          CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
+
+          if echo "$CURRENT_VERSION" | grep -q "dirty"; then
+            echo "Database is dirty. Extracting version number..."
+            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | grep -oP '(?<=version )\d+')
+            echo "Forcing clean version $(($DIRTY_VERSION - 1))..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $(($DIRTY_VERSION - 1))
+          fi
 
           # Wait a moment for DB to settle
           sleep 2

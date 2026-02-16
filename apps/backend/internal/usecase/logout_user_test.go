@@ -81,7 +81,7 @@ func TestLogoutUser_AuditEventLogged(t *testing.T) {
 	}
 
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.logout" {
 			found = true
 			break

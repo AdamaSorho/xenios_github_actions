@@ -246,11 +246,12 @@ func TestRegisterUser_AuditEventLogged(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(auditRepo.Events) == 0 {
+	if auditRepo.EventCount() == 0 {
 		t.Fatal("expected audit event to be logged")
 	}
-	if auditRepo.Events[0].Action != "user.registered" {
-		t.Errorf("expected action 'user.registered', got '%s'", auditRepo.Events[0].Action)
+	events := auditRepo.GetEvents()
+	if events[0].Action != "user.registered" {
+		t.Errorf("expected action 'user.registered', got '%s'", events[0].Action)
 	}
 }
 

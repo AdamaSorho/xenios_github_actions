@@ -26,14 +26,15 @@ func TestLogAuditEvent_ValidEvent_LogsSuccessfully(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(auditRepo.Events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(auditRepo.Events))
+	if auditRepo.EventCount() != 1 {
+		t.Fatalf("expected 1 event, got %d", auditRepo.EventCount())
 	}
-	if auditRepo.Events[0].Action != "user.login" {
-		t.Errorf("expected action 'user.login', got '%s'", auditRepo.Events[0].Action)
+	events := auditRepo.GetEvents()
+	if events[0].Action != "user.login" {
+		t.Errorf("expected action 'user.login', got '%s'", events[0].Action)
 	}
-	if auditRepo.Events[0].ActorID != "user-1" {
-		t.Errorf("expected actor_id 'user-1', got '%s'", auditRepo.Events[0].ActorID)
+	if events[0].ActorID != "user-1" {
+		t.Errorf("expected actor_id 'user-1', got '%s'", events[0].ActorID)
 	}
 }
 
@@ -50,11 +51,12 @@ func TestLogAuditEvent_WithMetadata_IncludesMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if auditRepo.Events[0].Metadata == nil {
+	events := auditRepo.GetEvents()
+	if events[0].Metadata == nil {
 		t.Fatal("expected metadata")
 	}
-	if auditRepo.Events[0].Metadata["reason"] != "invalid_password" {
-		t.Errorf("expected reason 'invalid_password', got '%v'", auditRepo.Events[0].Metadata["reason"])
+	if events[0].Metadata["reason"] != "invalid_password" {
+		t.Errorf("expected reason 'invalid_password', got '%v'", events[0].Metadata["reason"])
 	}
 }
 
@@ -72,11 +74,12 @@ func TestLogAuditEvent_WithIPAndUserAgent_Included(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if auditRepo.Events[0].IPAddress != "192.168.1.1" {
-		t.Errorf("expected IP '192.168.1.1', got '%s'", auditRepo.Events[0].IPAddress)
+	events := auditRepo.GetEvents()
+	if events[0].IPAddress != "192.168.1.1" {
+		t.Errorf("expected IP '192.168.1.1', got '%s'", events[0].IPAddress)
 	}
-	if auditRepo.Events[0].UserAgent != "Mozilla/5.0" {
-		t.Errorf("expected User-Agent 'Mozilla/5.0', got '%s'", auditRepo.Events[0].UserAgent)
+	if events[0].UserAgent != "Mozilla/5.0" {
+		t.Errorf("expected User-Agent 'Mozilla/5.0', got '%s'", events[0].UserAgent)
 	}
 }
 
@@ -164,7 +167,7 @@ func TestLogAuditEvent_CreatesAuditEventEntity(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	event := auditRepo.Events[0]
+	event := auditRepo.GetEvents()[0]
 	if event.EntityType != "insight_card" {
 		t.Errorf("expected entity_type 'insight_card', got '%s'", event.EntityType)
 	}

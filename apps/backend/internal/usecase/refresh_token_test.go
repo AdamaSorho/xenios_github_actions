@@ -110,7 +110,7 @@ func TestRefreshToken_TokenReuse_RevokesAllTokens(t *testing.T) {
 
 	// Check audit log for replay detection
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.token_replay_detected" {
 			found = true
 			break
@@ -171,7 +171,7 @@ func TestRefreshToken_AuditEventLogged(t *testing.T) {
 	}
 
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.token_refreshed" {
 			found = true
 			break

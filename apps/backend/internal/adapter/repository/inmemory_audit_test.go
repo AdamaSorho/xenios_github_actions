@@ -19,8 +19,8 @@ func TestInMemoryAuditRepository_LogEvent_StoresEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(repo.Events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(repo.Events))
+	if repo.EventCount() != 1 {
+		t.Fatalf("expected 1 event, got %d", repo.EventCount())
 	}
 }
 
@@ -35,10 +35,11 @@ func TestInMemoryAuditRepository_LogEvent_AssignsIDAndTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if repo.Events[0].ID == "" {
+	events := repo.GetEvents()
+	if events[0].ID == "" {
 		t.Error("expected non-empty ID")
 	}
-	if repo.Events[0].CreatedAt.IsZero() {
+	if events[0].CreatedAt.IsZero() {
 		t.Error("expected non-zero CreatedAt")
 	}
 }
@@ -56,8 +57,9 @@ func TestInMemoryAuditRepository_LogEvent_PreservesExistingTimestamp(t *testing.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !repo.Events[0].CreatedAt.Equal(ts) {
-		t.Errorf("expected preserved timestamp %v, got %v", ts, repo.Events[0].CreatedAt)
+	events := repo.GetEvents()
+	if !events[0].CreatedAt.Equal(ts) {
+		t.Errorf("expected preserved timestamp %v, got %v", ts, events[0].CreatedAt)
 	}
 }
 

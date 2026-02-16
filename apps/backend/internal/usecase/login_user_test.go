@@ -149,7 +149,7 @@ func TestLoginUser_FailedLogin_AuditEventLogged(t *testing.T) {
 	})
 
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.login_failed" {
 			found = true
 			break
@@ -173,7 +173,7 @@ func TestLoginUser_SuccessfulLogin_AuditEventLogged(t *testing.T) {
 	}
 
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.login" {
 			found = true
 			break

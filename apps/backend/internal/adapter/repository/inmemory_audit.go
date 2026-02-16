@@ -94,3 +94,12 @@ func (r *InMemoryAuditRepository) EventCount() int {
 	defer r.mu.RUnlock()
 	return len(r.events)
 }
+
+// GetEvents returns a snapshot copy of all stored events (for testing).
+func (r *InMemoryAuditRepository) GetEvents() []*entities.AuditEvent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cp := make([]*entities.AuditEvent, len(r.events))
+	copy(cp, r.events)
+	return cp
+}

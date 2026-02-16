@@ -51,6 +51,10 @@ jobs:
             CLEAN_VERSION=$((DIRTY_VERSION - 1))
             echo "Forcing clean version $CLEAN_VERSION..."
             migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
+
+            # Drop any partially created tables from the failed migration
+            echo "Cleaning up partial migration artifacts..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
           fi
 
           # Wait a moment for DB to settle
@@ -110,6 +114,10 @@ jobs:
             CLEAN_VERSION=$((DIRTY_VERSION - 1))
             echo "Forcing clean version $CLEAN_VERSION..."
             migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
+
+            # Drop any partially created tables from the failed migration
+            echo "Cleaning up partial migration artifacts..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
           fi
 
           # Wait a moment for DB to settle

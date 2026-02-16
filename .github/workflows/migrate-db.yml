@@ -43,7 +43,7 @@ jobs:
           CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
           echo "Current version output: $CURRENT_VERSION"
 
-          if echo "$CURRENT_VERSION" | grep -q "Dirty"; then
+          if echo "$CURRENT_VERSION" | grep -iq "dirty"; then
             echo "Database is dirty. Extracting version number..."
             # Extract version number using sed (more portable than grep -P)
             DIRTY_VERSION=$(echo "$CURRENT_VERSION" | sed -n 's/.*version \([0-9]*\).*/\1/p')
@@ -102,7 +102,7 @@ jobs:
           CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
           echo "Current version output: $CURRENT_VERSION"
 
-          if echo "$CURRENT_VERSION" | grep -q "Dirty"; then
+          if echo "$CURRENT_VERSION" | grep -iq "dirty"; then
             echo "Database is dirty. Extracting version number..."
             # Extract version number using sed (more portable than grep -P)
             DIRTY_VERSION=$(echo "$CURRENT_VERSION" | sed -n 's/.*version \([0-9]*\).*/\1/p')

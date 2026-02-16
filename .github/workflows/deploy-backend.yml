@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - 'apps/backend/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/backend/**'
   release:
     types: [published]
 

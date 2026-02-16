@@ -11,11 +11,11 @@ func TestLoad_Defaults(t *testing.T) {
 	originalJWT := os.Getenv("JWT_SECRET")
 	originalEnv := os.Getenv("ENVIRONMENT")
 	originalCORS := os.Getenv("CORS_ORIGINS")
-	os.Unsetenv("PORT")
-	os.Unsetenv("DATABASE_URL")
-	os.Unsetenv("JWT_SECRET")
-	os.Unsetenv("ENVIRONMENT")
-	os.Unsetenv("CORS_ORIGINS")
+	_ = os.Unsetenv("PORT")
+	_ = os.Unsetenv("DATABASE_URL")
+	_ = os.Unsetenv("JWT_SECRET")
+	_ = os.Unsetenv("ENVIRONMENT")
+	_ = os.Unsetenv("CORS_ORIGINS")
 	defer func() {
 		restoreEnv("PORT", originalPort)
 		restoreEnv("DATABASE_URL", originalDBURL)
@@ -55,11 +55,11 @@ func TestLoad_CustomValues(t *testing.T) {
 	originalJWT := os.Getenv("JWT_SECRET")
 	originalEnv := os.Getenv("ENVIRONMENT")
 	originalCORS := os.Getenv("CORS_ORIGINS")
-	os.Setenv("PORT", "9090")
-	os.Setenv("DATABASE_URL", "postgres://localhost/test")
-	os.Setenv("JWT_SECRET", "my-secret")
-	os.Setenv("ENVIRONMENT", "production")
-	os.Setenv("CORS_ORIGINS", "https://app.example.com, https://admin.example.com")
+	_ = os.Setenv("PORT", "9090")
+	_ = os.Setenv("DATABASE_URL", "postgres://localhost/test")
+	_ = os.Setenv("JWT_SECRET", "my-secret")
+	_ = os.Setenv("ENVIRONMENT", "production")
+	_ = os.Setenv("CORS_ORIGINS", "https://app.example.com, https://admin.example.com")
 	defer func() {
 		restoreEnv("PORT", originalPort)
 		restoreEnv("DATABASE_URL", originalDBURL)
@@ -131,8 +131,8 @@ func TestParseCORSOrigins_AllEmpty(t *testing.T) {
 }
 
 func TestGetEnvOrDefault_WithValue(t *testing.T) {
-	os.Setenv("TEST_CONFIG_KEY", "test-value")
-	defer os.Unsetenv("TEST_CONFIG_KEY")
+	_ = os.Setenv("TEST_CONFIG_KEY", "test-value")
+	defer func() { _ = os.Unsetenv("TEST_CONFIG_KEY") }()
 
 	val := getEnvOrDefault("TEST_CONFIG_KEY", "default")
 	if val != "test-value" {
@@ -141,7 +141,7 @@ func TestGetEnvOrDefault_WithValue(t *testing.T) {
 }
 
 func TestGetEnvOrDefault_WithDefault(t *testing.T) {
-	os.Unsetenv("TEST_CONFIG_MISSING")
+	_ = os.Unsetenv("TEST_CONFIG_MISSING")
 
 	val := getEnvOrDefault("TEST_CONFIG_MISSING", "default-val")
 	if val != "default-val" {
@@ -151,8 +151,8 @@ func TestGetEnvOrDefault_WithDefault(t *testing.T) {
 
 func restoreEnv(key, val string) {
 	if val != "" {
-		os.Setenv(key, val)
+		_ = os.Setenv(key, val)
 	} else {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 }

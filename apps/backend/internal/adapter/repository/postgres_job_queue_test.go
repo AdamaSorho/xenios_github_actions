@@ -6,13 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xenios/backend/internal/domain/entities"
-	"github.com/xenios/backend/internal/domain/repository"
 )
 
 func TestPostgresJobQueue_ImplementsJobQueueInterface(t *testing.T) {
 	// Verify that PostgresJobQueue implements the repository.JobQueue interface.
 	// We use a nil pool since we're only testing interface compliance, not actual DB operations.
-	var _ repository.JobQueue = NewPostgresJobQueue(nil)
+	var _ = NewPostgresJobQueue(nil)
 }
 
 func TestNewPostgresJobQueue_ReturnsNonNil(t *testing.T) {

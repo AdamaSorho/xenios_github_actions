@@ -108,7 +108,6 @@ jobs:
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--build-env NEXT_PUBLIC_API_URL=https://xenios-api-staging.fly.dev/api'
-          alias-domains: staging.xenios.app
 
   deploy-production:
     needs: test

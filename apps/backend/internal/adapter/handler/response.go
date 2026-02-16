@@ -26,7 +26,7 @@ func respondErrorWithCode(w http.ResponseWriter, status int, message, code strin
 	if details != nil {
 		resp.Details = details
 	}
-	respondJSON(w, status, resp)
+	_ = respondJSON(w, status, resp)
 }
 
 // ErrorResponse is the standardized JSON error response format.

@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - 'apps/backend/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/backend/**'
   release:
     types: [published]
 
@@ -15,6 +19,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for SonarCloud blame
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -31,6 +37,23 @@ jobs:
           files: apps/backend/coverage.out
           flags: backend
           name: backend-coverage
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/golang@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=apps/backend/go.mod
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@master
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          projectBaseDir: apps/backend
 
   deploy-staging:
     needs: test

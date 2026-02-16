@@ -17,7 +17,7 @@ import (
 
 func TestGetPort_Default(t *testing.T) {
 	originalPort := os.Getenv("PORT")
-	os.Unsetenv("PORT")
+	_ = os.Unsetenv("PORT")
 	defer restoreEnv(t, "PORT", originalPort)
 
 	port := getPort()
@@ -28,7 +28,7 @@ func TestGetPort_Default(t *testing.T) {
 
 func TestGetPort_CustomPort(t *testing.T) {
 	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "9999")
+	_ = os.Setenv("PORT", "9999")
 	defer restoreEnv(t, "PORT", originalPort)
 
 	port := getPort()
@@ -39,7 +39,7 @@ func TestGetPort_CustomPort(t *testing.T) {
 
 func TestGetPort_EmptyString(t *testing.T) {
 	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "")
+	_ = os.Setenv("PORT", "")
 	defer restoreEnv(t, "PORT", originalPort)
 
 	port := getPort()
@@ -50,7 +50,7 @@ func TestGetPort_EmptyString(t *testing.T) {
 
 func TestSetupServer_Configuration(t *testing.T) {
 	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "8080")
+	_ = os.Setenv("PORT", "8080")
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -76,7 +76,7 @@ func TestSetupServer_Configuration(t *testing.T) {
 func TestSetupServer_HealthEndpoint(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	port := "18080"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -94,7 +94,7 @@ func TestSetupServer_HealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -110,7 +110,7 @@ func TestSetupServer_HealthEndpoint(t *testing.T) {
 func TestSetupServer_VersionEndpoint(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	port := "18081"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -127,7 +127,7 @@ func TestSetupServer_VersionEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call version endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -142,7 +142,7 @@ func TestSetupServer_VersionEndpoint(t *testing.T) {
 
 func TestSetupServer_CustomPort(t *testing.T) {
 	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "18082")
+	_ = os.Setenv("PORT", "18082")
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -202,7 +202,7 @@ func TestGetPort_VariousPortNumbers(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			originalPort := os.Getenv("PORT")
-			os.Setenv("PORT", tc.portEnv)
+			_ = os.Setenv("PORT", tc.portEnv)
 			defer restoreEnv(t, "PORT", originalPort)
 
 			port := getPort()
@@ -216,7 +216,7 @@ func TestGetPort_VariousPortNumbers(t *testing.T) {
 func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	port := "18083"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -233,13 +233,13 @@ func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
-	defer healthResp.Body.Close()
+	defer func() { _ = healthResp.Body.Close() }()
 
 	versionResp, err := http.Get("http://localhost:" + port + "/version")
 	if err != nil {
 		t.Fatalf("failed to call version endpoint: %v", err)
 	}
-	defer versionResp.Body.Close()
+	defer func() { _ = versionResp.Body.Close() }()
 
 	if healthResp.StatusCode != http.StatusOK {
 		t.Errorf("expected health status 200, got %d", healthResp.StatusCode)
@@ -257,7 +257,7 @@ func TestSetupServer_BothEndpointsConfigured(t *testing.T) {
 
 func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
 	originalDBURL := os.Getenv("DATABASE_URL")
-	os.Unsetenv("DATABASE_URL")
+	_ = os.Unsetenv("DATABASE_URL")
 	defer restoreEnv(t, "DATABASE_URL", originalDBURL)
 
 	h, pool, cleanup := setupHealthHandler()
@@ -273,7 +273,7 @@ func TestSetupHealthHandler_NoDatabaseURL(t *testing.T) {
 
 func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
 	originalDBURL := os.Getenv("DATABASE_URL")
-	os.Setenv("DATABASE_URL", "not-a-valid-url")
+	_ = os.Setenv("DATABASE_URL", "not-a-valid-url")
 	defer restoreEnv(t, "DATABASE_URL", originalDBURL)
 
 	h, pool, cleanup := setupHealthHandler()
@@ -289,7 +289,7 @@ func TestSetupHealthHandler_InvalidDatabaseURL(t *testing.T) {
 
 func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
 	originalDBURL := os.Getenv("DATABASE_URL")
-	os.Setenv("DATABASE_URL", "postgres://invalid:invalid@localhost:19999/nonexistent?connect_timeout=1")
+	_ = os.Setenv("DATABASE_URL", "postgres://invalid:invalid@localhost:19999/nonexistent?connect_timeout=1")
 	defer restoreEnv(t, "DATABASE_URL", originalDBURL)
 
 	h, pool, cleanup := setupHealthHandler()
@@ -305,7 +305,7 @@ func TestSetupHealthHandler_UnreachableDatabase(t *testing.T) {
 
 func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
 	originalDBURL := os.Getenv("DATABASE_URL")
-	os.Unsetenv("DATABASE_URL")
+	_ = os.Unsetenv("DATABASE_URL")
 	defer restoreEnv(t, "DATABASE_URL", originalDBURL)
 
 	_, _, cleanup := setupHealthHandler()
@@ -315,7 +315,7 @@ func TestSetupHealthHandler_CleanupFunctionIsSafe(t *testing.T) {
 
 func TestRunServer_GracefulShutdown(t *testing.T) {
 	originalPort := os.Getenv("PORT")
-	os.Setenv("PORT", "18084")
+	_ = os.Setenv("PORT", "18084")
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -335,7 +335,7 @@ func TestRunServer_GracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("server should be running: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -357,8 +357,8 @@ func TestRunServer_GracefulShutdown(t *testing.T) {
 func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	originalDBURL := os.Getenv("DATABASE_URL")
-	os.Setenv("PORT", "18085")
-	os.Unsetenv("DATABASE_URL")
+	_ = os.Setenv("PORT", "18085")
+	_ = os.Unsetenv("DATABASE_URL")
 	defer func() {
 		restoreEnv(t, "PORT", originalPort)
 		restoreEnv(t, "DATABASE_URL", originalDBURL)
@@ -378,7 +378,7 @@ func TestSetupServer_NoDatabaseURL_ReturnsLegacyHealth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -528,7 +528,7 @@ func TestConfigureRoutes_WithPool_RegistersJobEndpoints(t *testing.T) {
 func TestSetupServer_ProtectedRouteRequiresAuth(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	port := "18086"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -546,7 +546,7 @@ func TestSetupServer_ProtectedRouteRequiresAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call protected endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("expected status 401, got %d", resp.StatusCode)
@@ -568,7 +568,7 @@ func TestSetupServer_ProtectedRouteRequiresAuth(t *testing.T) {
 func TestSetupServer_CORSHeaders(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	port := "18087"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -590,7 +590,7 @@ func TestSetupServer_CORSHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to send preflight request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// CORS should be handled
 	allowOrigin := resp.Header.Get("Access-Control-Allow-Origin")
@@ -608,7 +608,7 @@ func TestSetupServer_CORSHeaders(t *testing.T) {
 func TestSetupServer_RequestIDHeader(t *testing.T) {
 	originalPort := os.Getenv("PORT")
 	port := "18088"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -625,7 +625,7 @@ func TestSetupServer_RequestIDHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	reqID := resp.Header.Get("X-Request-ID")
 	if reqID == "" {
@@ -644,7 +644,7 @@ func TestSetupServer_PanicRecovery(t *testing.T) {
 	// on a normal request (full panic recovery test is in middleware_test.go)
 	originalPort := os.Getenv("PORT")
 	port := "18089"
-	os.Setenv("PORT", port)
+	_ = os.Setenv("PORT", port)
 	defer restoreEnv(t, "PORT", originalPort)
 
 	server, cleanup := setupServer()
@@ -662,7 +662,7 @@ func TestSetupServer_PanicRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -678,8 +678,8 @@ func TestSetupServer_PanicRecovery(t *testing.T) {
 func restoreEnv(t *testing.T, key, val string) {
 	t.Helper()
 	if val != "" {
-		os.Setenv(key, val)
+		_ = os.Setenv(key, val)
 	} else {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	}
 }

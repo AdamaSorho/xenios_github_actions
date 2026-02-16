@@ -27,7 +27,40 @@ jobs:
           go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
       - name: Run Migrations (Staging)
+        id: migrate_up
         run: |
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" up
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        continue-on-error: true
+
+      - name: Retry Migration (Rollback + Up)
+        if: steps.migrate_up.outcome == 'failure'
+        run: |
+          echo "Migration failed. Attempting recovery..."
+
+          # Get current version and check if dirty
+          CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
+          echo "Current version output: $CURRENT_VERSION"
+
+          if echo "$CURRENT_VERSION" | grep -iq "dirty"; then
+            echo "Database is dirty. Extracting version number..."
+            # Extract version number using sed (more portable than grep -P)
+            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | sed -n 's/^\([0-9]*\).*/\1/p')
+            echo "Dirty version: $DIRTY_VERSION"
+            CLEAN_VERSION=$((DIRTY_VERSION - 1))
+            echo "Forcing clean version $CLEAN_VERSION..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
+
+            # Drop any partially created artifacts table from the failed migration
+            echo "Dropping partial artifacts table..."
+            psql "$DATABASE_URL" -c "DROP TABLE IF EXISTS artifacts CASCADE;" || true
+          fi
+
+          # Wait a moment for DB to settle
+          sleep 2
+
+          # Retry the migration
           migrate -path apps/backend/migrations -database "$DATABASE_URL" up
         env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -57,7 +90,40 @@ jobs:
           go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
       - name: Run Migrations (Production)
+        id: migrate_up_prod
         run: |
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" up
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        continue-on-error: true
+
+      - name: Retry Migration (Rollback + Up)
+        if: steps.migrate_up_prod.outcome == 'failure'
+        run: |
+          echo "Migration failed. Attempting recovery..."
+
+          # Get current version and check if dirty
+          CURRENT_VERSION=$(migrate -path apps/backend/migrations -database "$DATABASE_URL" version 2>&1 || echo "dirty")
+          echo "Current version output: $CURRENT_VERSION"
+
+          if echo "$CURRENT_VERSION" | grep -iq "dirty"; then
+            echo "Database is dirty. Extracting version number..."
+            # Extract version number using sed (more portable than grep -P)
+            DIRTY_VERSION=$(echo "$CURRENT_VERSION" | sed -n 's/^\([0-9]*\).*/\1/p')
+            echo "Dirty version: $DIRTY_VERSION"
+            CLEAN_VERSION=$((DIRTY_VERSION - 1))
+            echo "Forcing clean version $CLEAN_VERSION..."
+            migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
+
+            # Drop any partially created artifacts table from the failed migration
+            echo "Dropping partial artifacts table..."
+            psql "$DATABASE_URL" -c "DROP TABLE IF EXISTS artifacts CASCADE;" || true
+          fi
+
+          # Wait a moment for DB to settle
+          sleep 2
+
+          # Retry the migration
           migrate -path apps/backend/migrations -database "$DATABASE_URL" up
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}

@@ -115,6 +115,12 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		auditHandler := handler.NewAuditHandler(queryAuditUC)
 		api.Get("/admin/audit", auditHandler.Query)
 
+		// File upload/download endpoints
+		uploadHandler := setupUploadHandler()
+		api.Post("/uploads/presign", uploadHandler.RequestPresignedURL)
+		api.Post("/uploads/{artifactID}/confirm", uploadHandler.ConfirmUpload)
+		api.Post("/uploads/{artifactID}/download", uploadHandler.RequestDownloadURL)
+
 		// Job queue endpoints (if database is available)
 		if pool != nil {
 			queueHandler, w := setupJobQueue(pool)
@@ -238,6 +244,19 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// setupUploadHandler wires up file upload/download dependencies and returns the handler.
+func setupUploadHandler() *handler.UploadHandler {
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	fileStorage := repository.NewInMemoryFileStorage()
+	auditRepo := repository.NewInMemoryAuditRepository()
+
+	requestUploadUC := usecase.NewRequestUploadUseCase(artifactRepo, fileStorage, auditRepo)
+	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo)
+	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
+
+	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)
 }
 
 // getPort returns the port to listen on

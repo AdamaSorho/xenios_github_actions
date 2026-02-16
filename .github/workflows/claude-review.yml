@@ -1,14 +1,17 @@
 name: Claude PR Review
 
+# DISABLED - Uncomment to re-enable
+# on:
+#   pull_request:
+#     types: [opened, synchronize, ready_for_review]
+#
+#   pull_request_review_comment:
+#     types: [created]
+#
+#   issue_comment:
+#     types: [created]
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
-
-  pull_request_review_comment:
-    types: [created]
-
-  issue_comment:
-    types: [created]
+  workflow_dispatch: # Manual trigger only
 
 jobs:
   review-pr:

@@ -27,7 +27,25 @@ jobs:
           go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
       - name: Run Migrations (Staging)
+        id: migrate_up
         run: |
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" up
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        continue-on-error: true
+
+      - name: Retry Migration (Rollback + Up)
+        if: steps.migrate_up.outcome == 'failure'
+        run: |
+          echo "Migration failed. Attempting rollback and retry..."
+
+          # Roll back the last migration that failed
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
+
+          # Wait a moment for DB to settle
+          sleep 2
+
+          # Retry the migration
           migrate -path apps/backend/migrations -database "$DATABASE_URL" up
         env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -57,7 +75,25 @@ jobs:
           go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
       - name: Run Migrations (Production)
+        id: migrate_up_prod
         run: |
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" up
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        continue-on-error: true
+
+      - name: Retry Migration (Rollback + Up)
+        if: steps.migrate_up_prod.outcome == 'failure'
+        run: |
+          echo "Migration failed. Attempting rollback and retry..."
+
+          # Roll back the last migration that failed
+          migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
+
+          # Wait a moment for DB to settle
+          sleep 2
+
+          # Retry the migration
           migrate -path apps/backend/migrations -database "$DATABASE_URL" up
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}

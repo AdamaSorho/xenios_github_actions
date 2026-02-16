@@ -40,6 +40,14 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck --workspace=apps/web
 
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
   deploy-preview:
     needs: test
     if: github.event_name == 'pull_request'

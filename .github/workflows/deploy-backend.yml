@@ -32,6 +32,14 @@ jobs:
           flags: backend
           name: backend-coverage
 
+      - name: Run Snyk security scan
+        uses: snyk/actions/golang@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=apps/backend/go.mod
+
   deploy-staging:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

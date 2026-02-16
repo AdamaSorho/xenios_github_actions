@@ -12,7 +12,7 @@ import (
 // InMemoryAuditRepository is an in-memory implementation of AuditRepository.
 type InMemoryAuditRepository struct {
 	mu     sync.RWMutex
-	Events []*entities.AuditEvent
+	events []*entities.AuditEvent
 	count  int
 }
 
@@ -35,7 +35,7 @@ func (r *InMemoryAuditRepository) LogEvent(_ context.Context, event *entities.Au
 		stored.CreatedAt = time.Now()
 	}
 
-	r.Events = append(r.Events, &stored)
+	r.events = append(r.events, &stored)
 	return nil
 }
 
@@ -45,7 +45,7 @@ func (r *InMemoryAuditRepository) Query(_ context.Context, filter entities.Audit
 	defer r.mu.RUnlock()
 
 	var matched []*entities.AuditEvent
-	for _, e := range r.Events {
+	for _, e := range r.events {
 		if filter.ActorID != "" && e.ActorID != filter.ActorID {
 			continue
 		}

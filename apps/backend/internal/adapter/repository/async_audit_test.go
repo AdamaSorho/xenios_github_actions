@@ -28,11 +28,15 @@ func TestAsyncAuditRepository_LogEvent_QueuesAndProcesses(t *testing.T) {
 	// Wait for async processing
 	time.Sleep(100 * time.Millisecond)
 
-	if len(inner.Events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(inner.Events))
+	events, total, err := inner.Query(context.Background(), entities.AuditQueryFilter{Limit: 100})
+	if err != nil {
+		t.Fatalf("unexpected error querying events: %v", err)
 	}
-	if inner.Events[0].Action != "user.login" {
-		t.Errorf("expected action 'user.login', got '%s'", inner.Events[0].Action)
+	if total != 1 {
+		t.Fatalf("expected 1 event, got %d", total)
+	}
+	if events[0].Action != "user.login" {
+		t.Errorf("expected action 'user.login', got '%s'", events[0].Action)
 	}
 }
 
@@ -52,8 +56,15 @@ func TestAsyncAuditRepository_LogEvent_MultipleEvents_AllProcessed(t *testing.T)
 
 	async.Stop() // Stop waits for all events to drain
 
-	if len(inner.Events) != 10 {
-		t.Errorf("expected 10 events, got %d", len(inner.Events))
+	events, total, err := inner.Query(context.Background(), entities.AuditQueryFilter{Limit: 100})
+	if err != nil {
+		t.Fatalf("unexpected error querying events: %v", err)
+	}
+	if total != 10 {
+		t.Errorf("expected 10 events, got %d", total)
+	}
+	if len(events) != 10 {
+		t.Errorf("expected 10 events in result, got %d", len(events))
 	}
 }
 
@@ -73,8 +84,15 @@ func TestAsyncAuditRepository_Stop_DrainsBuffer(t *testing.T) {
 
 	async.Stop()
 
-	if len(inner.Events) != 5 {
-		t.Errorf("expected 5 events after drain, got %d", len(inner.Events))
+	events, total, err := inner.Query(context.Background(), entities.AuditQueryFilter{Limit: 100})
+	if err != nil {
+		t.Fatalf("unexpected error querying events: %v", err)
+	}
+	if total != 5 {
+		t.Errorf("expected 5 events after drain, got %d", total)
+	}
+	if len(events) != 5 {
+		t.Errorf("expected 5 events in result, got %d", len(events))
 	}
 }
 
@@ -126,8 +144,15 @@ func TestAsyncAuditRepository_ConcurrentLogging_ThreadSafe(t *testing.T) {
 	wg.Wait()
 	async.Stop()
 
-	if len(inner.Events) != 100 {
-		t.Errorf("expected 100 events, got %d", len(inner.Events))
+	events, total, err := inner.Query(context.Background(), entities.AuditQueryFilter{Limit: 200})
+	if err != nil {
+		t.Fatalf("unexpected error querying events: %v", err)
+	}
+	if total != 100 {
+		t.Errorf("expected 100 events, got %d", total)
+	}
+	if len(events) != 100 {
+		t.Errorf("expected 100 events in result, got %d", len(events))
 	}
 }
 
@@ -157,8 +182,15 @@ func TestAsyncAuditRepository_BufferFull_FallsBackToSync(t *testing.T) {
 	}
 
 	// The sync fallback should have written directly
-	if len(inner.Events) < 1 {
+	events, total, err := inner.Query(context.Background(), entities.AuditQueryFilter{Limit: 100})
+	if err != nil {
+		t.Fatalf("unexpected error querying events: %v", err)
+	}
+	if total < 1 {
 		t.Error("expected at least one event to be logged synchronously")
+	}
+	if len(events) < 1 {
+		t.Error("expected at least one event in result")
 	}
 }
 

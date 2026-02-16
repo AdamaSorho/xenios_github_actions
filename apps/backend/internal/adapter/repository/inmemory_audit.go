@@ -87,3 +87,10 @@ func (r *InMemoryAuditRepository) Query(_ context.Context, filter entities.Audit
 
 	return matched, total, nil
 }
+
+// EventCount returns the number of stored events (for testing).
+func (r *InMemoryAuditRepository) EventCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.events)
+}

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/xenios/backend/internal/domain/entities"
@@ -58,12 +59,14 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, rawRefreshToken stri
 	// Replay attack detection: if the token was already used, revoke all tokens for this user.
 	if storedToken.Used {
 		_ = uc.tokenRepo.RevokeAllForUser(ctx, storedToken.UserID)
-		_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		if auditErr := uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
 			ActorID:    storedToken.UserID,
 			Action:     "auth.token_replay_detected",
 			EntityType: "refresh_token",
 			EntityID:   storedToken.ID,
-		})
+		}); auditErr != nil {
+			log.Printf("audit log error: %v", auditErr)
+		}
 		return nil, &AuthenticationError{Message: "token reuse detected, all sessions revoked"}
 	}
 
@@ -100,12 +103,14 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, rawRefreshToken stri
 		return nil, fmt.Errorf("store new refresh token: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+	if auditErr := uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
 		ActorID:    user.ID,
 		Action:     "auth.token_refreshed",
 		EntityType: "refresh_token",
 		EntityID:   storedToken.ID,
-	})
+	}); auditErr != nil {
+		log.Printf("audit log error: %v", auditErr)
+	}
 
 	return &RefreshOutput{
 		Tokens: &entities.AuthTokens{

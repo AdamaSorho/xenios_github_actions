@@ -38,52 +38,81 @@ func (r *PostgresAuditRepository) LogEvent(ctx context.Context, event *entities.
 	return nil
 }
 
+// auditQueryBuilder constructs parameterized SQL for querying the events_audit table.
+// All filter values are passed as parameterized arguments ($1, $2, ...) to prevent injection.
+type auditQueryBuilder struct {
+	conditions []string
+	args       []interface{}
+	paramIdx   int
+}
+
+func newAuditQueryBuilder() *auditQueryBuilder {
+	return &auditQueryBuilder{paramIdx: 1}
+}
+
+func (b *auditQueryBuilder) addCondition(column string, value interface{}) {
+	b.conditions = append(b.conditions, fmt.Sprintf("%s = $%d", column, b.paramIdx))
+	b.args = append(b.args, value)
+	b.paramIdx++
+}
+
+func (b *auditQueryBuilder) addTimeCondition(column, op string, value interface{}) {
+	b.conditions = append(b.conditions, fmt.Sprintf("%s %s $%d", column, op, b.paramIdx))
+	b.args = append(b.args, value)
+	b.paramIdx++
+}
+
+func (b *auditQueryBuilder) whereClause() string {
+	if len(b.conditions) == 0 {
+		return ""
+	}
+	return " WHERE " + strings.Join(b.conditions, " AND ")
+}
+
+func (b *auditQueryBuilder) countSQL() string {
+	var sb strings.Builder
+	sb.WriteString("SELECT COUNT(*) FROM events_audit")
+	sb.WriteString(b.whereClause())
+	return sb.String()
+}
+
+func (b *auditQueryBuilder) selectSQL() string {
+	var sb strings.Builder
+	sb.WriteString("SELECT id, actor_id, action, entity_type, entity_id, metadata,")
+	sb.WriteString(" COALESCE(ip_address::TEXT, ''), COALESCE(user_agent, ''), created_at")
+	sb.WriteString(" FROM events_audit")
+	sb.WriteString(b.whereClause())
+	sb.WriteString(" ORDER BY created_at DESC")
+	sb.WriteString(fmt.Sprintf(" LIMIT $%d OFFSET $%d", b.paramIdx, b.paramIdx+1))
+	return sb.String()
+}
+
 // Query retrieves audit events matching the given filter.
 func (r *PostgresAuditRepository) Query(ctx context.Context, filter entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error) {
-	var conditions []string
-	var args []interface{}
-	paramIdx := 1
+	qb := newAuditQueryBuilder()
 
 	if filter.ActorID != "" {
-		conditions = append(conditions, fmt.Sprintf("actor_id = $%d", paramIdx))
-		args = append(args, filter.ActorID)
-		paramIdx++
+		qb.addCondition("actor_id", filter.ActorID)
 	}
 	if filter.Action != "" {
-		conditions = append(conditions, fmt.Sprintf("action = $%d", paramIdx))
-		args = append(args, filter.Action)
-		paramIdx++
+		qb.addCondition("action", filter.Action)
 	}
 	if filter.EntityType != "" {
-		conditions = append(conditions, fmt.Sprintf("entity_type = $%d", paramIdx))
-		args = append(args, filter.EntityType)
-		paramIdx++
+		qb.addCondition("entity_type", filter.EntityType)
 	}
 	if filter.EntityID != "" {
-		conditions = append(conditions, fmt.Sprintf("entity_id = $%d", paramIdx))
-		args = append(args, filter.EntityID)
-		paramIdx++
+		qb.addCondition("entity_id", filter.EntityID)
 	}
 	if filter.From != nil {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", paramIdx))
-		args = append(args, *filter.From)
-		paramIdx++
+		qb.addTimeCondition("created_at", ">=", *filter.From)
 	}
 	if filter.To != nil {
-		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", paramIdx))
-		args = append(args, *filter.To)
-		paramIdx++
-	}
-
-	where := ""
-	if len(conditions) > 0 {
-		where = " WHERE " + strings.Join(conditions, " AND ")
+		qb.addTimeCondition("created_at", "<=", *filter.To)
 	}
 
 	// Count total matching records
-	countQuery := "SELECT COUNT(*) FROM events_audit" + where
 	var total int
-	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, qb.countSQL(), qb.args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count audit events: %w", err)
 	}
 
@@ -97,17 +126,8 @@ func (r *PostgresAuditRepository) Query(ctx context.Context, filter entities.Aud
 		offset = 0
 	}
 
-	dataQuery := fmt.Sprintf(
-		`SELECT id, actor_id, action, entity_type, entity_id, metadata,
-		        COALESCE(ip_address::TEXT, ''), COALESCE(user_agent, ''), created_at
-		 FROM events_audit%s
-		 ORDER BY created_at DESC
-		 LIMIT $%d OFFSET $%d`,
-		where, paramIdx, paramIdx+1,
-	)
-	args = append(args, limit, offset)
-
-	rows, err := r.db.Query(ctx, dataQuery, args...)
+	args := append(qb.args, limit, offset)
+	rows, err := r.db.Query(ctx, qb.selectSQL(), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query audit events: %w", err)
 	}

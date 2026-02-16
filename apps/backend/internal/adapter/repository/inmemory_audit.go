@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ func (r *InMemoryAuditRepository) LogEvent(_ context.Context, event *entities.Au
 	r.count++
 	stored := *event
 	if stored.ID == "" {
-		stored.ID = "audit-" + time.Now().Format("20060102150405") + "-" + string(rune('0'+r.count))
+		stored.ID = fmt.Sprintf("audit-%d", r.count)
 	}
 	if stored.CreatedAt.IsZero() {
 		stored.CreatedAt = time.Now()

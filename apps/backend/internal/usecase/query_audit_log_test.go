@@ -2,12 +2,26 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/xenios/backend/internal/adapter/repository"
 	"github.com/xenios/backend/internal/domain/entities"
 )
+
+// failingAuditRepo is a mock that returns errors for Query.
+type failingAuditRepo struct {
+	queryErr error
+}
+
+func (f *failingAuditRepo) LogEvent(_ context.Context, _ *entities.AuditEvent) error {
+	return nil
+}
+
+func (f *failingAuditRepo) Query(_ context.Context, _ entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error) {
+	return nil, 0, f.queryErr
+}
 
 func newQueryAuditLogUseCase() (*QueryAuditLogUseCase, *repository.InMemoryAuditRepository) {
 	auditRepo := repository.NewInMemoryAuditRepository()
@@ -199,5 +213,75 @@ func TestQueryAuditLog_NegativeOffset_DefaultsToZero(t *testing.T) {
 	}
 	if out.Total != 4 {
 		t.Errorf("expected total 4, got %d", out.Total)
+	}
+}
+
+func TestQueryAuditLog_RepoError_ReturnsError(t *testing.T) {
+	expectedErr := errors.New("database connection failed")
+	uc := NewQueryAuditLogUseCase(&failingAuditRepo{queryErr: expectedErr})
+
+	out, err := uc.Execute(context.Background(), QueryAuditLogInput{
+		Limit: 10,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if out != nil {
+		t.Error("expected nil output on error")
+	}
+	if !errors.Is(err, expectedErr) {
+		t.Errorf("expected wrapped error to contain original, got: %v", err)
+	}
+}
+
+func TestQueryAuditLog_NilEvents_ReturnsEmptySlice(t *testing.T) {
+	uc, _ := newQueryAuditLogUseCase()
+
+	out, err := uc.Execute(context.Background(), QueryAuditLogInput{
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Events == nil {
+		t.Error("expected non-nil events slice (empty but not nil)")
+	}
+	if len(out.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(out.Events))
+	}
+}
+
+func TestQueryAuditLog_LimitAndOffsetInOutput(t *testing.T) {
+	uc, auditRepo := newQueryAuditLogUseCase()
+	seedAuditEvents(t, auditRepo)
+
+	out, err := uc.Execute(context.Background(), QueryAuditLogInput{
+		Limit:  5,
+		Offset: 2,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Limit != 5 {
+		t.Errorf("expected limit 5 in output, got %d", out.Limit)
+	}
+	if out.Offset != 2 {
+		t.Errorf("expected offset 2 in output, got %d", out.Offset)
+	}
+}
+
+func TestQueryAuditLog_FilterByEntityID(t *testing.T) {
+	uc, auditRepo := newQueryAuditLogUseCase()
+	seedAuditEvents(t, auditRepo)
+
+	out, err := uc.Execute(context.Background(), QueryAuditLogInput{
+		EntityID: "client-1",
+		Limit:    10,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Total != 1 {
+		t.Errorf("expected total 1, got %d", out.Total)
 	}
 }

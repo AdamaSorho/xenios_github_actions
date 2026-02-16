@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/xenios/backend/internal/domain/entities"
 	"github.com/xenios/backend/internal/domain/repository"
@@ -35,12 +36,14 @@ func (uc *LogoutUserUseCase) Execute(ctx context.Context, userID string) error {
 		return fmt.Errorf("revoke tokens: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+	if auditErr := uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
 		ActorID:    userID,
 		Action:     "auth.logout",
 		EntityType: "user",
 		EntityID:   userID,
-	})
+	}); auditErr != nil {
+		log.Printf("audit log error: %v", auditErr)
+	}
 
 	return nil
 }

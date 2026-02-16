@@ -217,6 +217,67 @@ func TestAuditHandler_Query_InternalError_Returns500(t *testing.T) {
 	}
 }
 
+func TestAuditHandler_Query_InvalidTimeFormat_IgnoredGracefully(t *testing.T) {
+	var capturedInput usecase.QueryAuditLogInput
+	h := NewAuditHandler(&mockQueryAuditLogUCCapture{
+		output: &usecase.QueryAuditLogOutput{
+			Events: []*entities.AuditEvent{},
+			Total:  0,
+			Limit:  50,
+			Offset: 0,
+		},
+		capturedInput: &capturedInput,
+	})
+
+	// Use invalid time formats — should be ignored (not cause an error)
+	req := httptest.NewRequest("GET", "/api/v1/admin/audit?from=not-a-date&to=also-bad", nil)
+	ctx := middleware.SetUserClaims(req.Context(), &middleware.UserClaims{Subject: "admin-1", Role: "admin"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	h.Query(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if capturedInput.From != nil {
+		t.Error("expected 'from' to be nil for invalid format")
+	}
+	if capturedInput.To != nil {
+		t.Error("expected 'to' to be nil for invalid format")
+	}
+}
+
+func TestAuditHandler_Query_InvalidLimit_DefaultsToZero(t *testing.T) {
+	var capturedInput usecase.QueryAuditLogInput
+	h := NewAuditHandler(&mockQueryAuditLogUCCapture{
+		output: &usecase.QueryAuditLogOutput{
+			Events: []*entities.AuditEvent{},
+			Total:  0,
+			Limit:  50,
+			Offset: 0,
+		},
+		capturedInput: &capturedInput,
+	})
+
+	req := httptest.NewRequest("GET", "/api/v1/admin/audit?limit=abc&offset=xyz", nil)
+	ctx := middleware.SetUserClaims(req.Context(), &middleware.UserClaims{Subject: "admin-1", Role: "admin"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	h.Query(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if capturedInput.Limit != 0 {
+		t.Errorf("expected limit 0 for invalid input, got %d", capturedInput.Limit)
+	}
+	if capturedInput.Offset != 0 {
+		t.Errorf("expected offset 0 for invalid input, got %d", capturedInput.Offset)
+	}
+}
+
 // --- Helper mock that captures input ---
 
 type mockQueryAuditLogUCCapture struct {

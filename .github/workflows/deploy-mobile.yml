@@ -1,11 +1,14 @@
 name: Deploy Mobile
 
+# Push trigger disabled until EAS credentials (iOS/Android signing) are configured.
+# PRs still run tests and security scans.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/mobile/**'
-      - 'packages/**'
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'apps/mobile/**'
+  #     - 'packages/**'
   pull_request:
     branches: [main]
     paths:
@@ -18,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Full history for SonarCloud blame
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -36,6 +41,23 @@ jobs:
 
       - name: Run typecheck
         run: npm run typecheck --workspace=apps/mobile
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@master
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          projectBaseDir: apps/mobile
 
   build-android:
     needs: test

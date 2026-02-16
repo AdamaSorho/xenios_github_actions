@@ -91,8 +91,8 @@ func TestVersionHandler_Version_ReturnsGoVersion(t *testing.T) {
 func TestVersionHandler_Version_ReturnsEnvironmentFromEnvVar(t *testing.T) {
 	// Arrange
 	originalEnv := os.Getenv("ENVIRONMENT")
-	os.Setenv("ENVIRONMENT", "staging")
-	defer os.Setenv("ENVIRONMENT", originalEnv)
+	_ = os.Setenv("ENVIRONMENT", "staging")
+	defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 	handler := NewVersionHandler()
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
@@ -116,8 +116,8 @@ func TestVersionHandler_Version_ReturnsEnvironmentFromEnvVar(t *testing.T) {
 func TestVersionHandler_Version_DefaultsToDevEnvironment(t *testing.T) {
 	// Arrange
 	originalEnv := os.Getenv("ENVIRONMENT")
-	os.Unsetenv("ENVIRONMENT")
-	defer os.Setenv("ENVIRONMENT", originalEnv)
+	_ = os.Unsetenv("ENVIRONMENT")
+	defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 	handler := NewVersionHandler()
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
@@ -141,8 +141,8 @@ func TestVersionHandler_Version_DefaultsToDevEnvironment(t *testing.T) {
 func TestVersionHandler_Version_ResponseFormat(t *testing.T) {
 	// Arrange
 	originalEnv := os.Getenv("ENVIRONMENT")
-	os.Setenv("ENVIRONMENT", "test")
-	defer os.Setenv("ENVIRONMENT", originalEnv)
+	_ = os.Setenv("ENVIRONMENT", "test")
+	defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 	handler := NewVersionHandler()
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
@@ -175,8 +175,8 @@ func TestVersionHandler_Version_ResponseFormat(t *testing.T) {
 func TestVersionHandler_Version_EmptyStringEnvironment(t *testing.T) {
 	// Arrange - test empty string vs unset
 	originalEnv := os.Getenv("ENVIRONMENT")
-	os.Setenv("ENVIRONMENT", "")
-	defer os.Setenv("ENVIRONMENT", originalEnv)
+	_ = os.Setenv("ENVIRONMENT", "")
+	defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 	handler := NewVersionHandler()
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
@@ -212,8 +212,8 @@ func TestVersionHandler_Version_SpecialCharactersInEnvironment(t *testing.T) {
 
 	for _, testEnv := range testCases {
 		t.Run(testEnv, func(t *testing.T) {
-			os.Setenv("ENVIRONMENT", testEnv)
-			defer os.Setenv("ENVIRONMENT", originalEnv)
+			_ = os.Setenv("ENVIRONMENT", testEnv)
+			defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 			handler := NewVersionHandler()
 			req := httptest.NewRequest(http.MethodGet, "/version", nil)
@@ -242,8 +242,8 @@ func TestVersionHandler_Version_ExtremelyLongEnvironment(t *testing.T) {
 	for i := range longEnv {
 		longEnv = longEnv[:i] + "a" + longEnv[i+1:]
 	}
-	os.Setenv("ENVIRONMENT", longEnv)
-	defer os.Setenv("ENVIRONMENT", originalEnv)
+	_ = os.Setenv("ENVIRONMENT", longEnv)
+	defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 	handler := NewVersionHandler()
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
@@ -275,8 +275,8 @@ func TestVersionHandler_Version_UnicodeInEnvironment(t *testing.T) {
 
 	for _, testEnv := range testCases {
 		t.Run(testEnv, func(t *testing.T) {
-			os.Setenv("ENVIRONMENT", testEnv)
-			defer os.Setenv("ENVIRONMENT", originalEnv)
+			_ = os.Setenv("ENVIRONMENT", testEnv)
+			defer func() { _ = os.Setenv("ENVIRONMENT", originalEnv) }()
 
 			handler := NewVersionHandler()
 			req := httptest.NewRequest(http.MethodGet, "/version", nil)

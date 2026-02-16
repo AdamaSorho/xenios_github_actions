@@ -52,9 +52,9 @@ jobs:
             echo "Forcing clean version $CLEAN_VERSION..."
             migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
 
-            # Drop any partially created tables from the failed migration
-            echo "Cleaning up partial migration artifacts..."
-            migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
+            # Drop any partially created artifacts table from the failed migration
+            echo "Dropping partial artifacts table..."
+            psql "$DATABASE_URL" -c "DROP TABLE IF EXISTS artifacts CASCADE;" || true
           fi
 
           # Wait a moment for DB to settle
@@ -115,9 +115,9 @@ jobs:
             echo "Forcing clean version $CLEAN_VERSION..."
             migrate -path apps/backend/migrations -database "$DATABASE_URL" force $CLEAN_VERSION
 
-            # Drop any partially created tables from the failed migration
-            echo "Cleaning up partial migration artifacts..."
-            migrate -path apps/backend/migrations -database "$DATABASE_URL" down 1 || true
+            # Drop any partially created artifacts table from the failed migration
+            echo "Dropping partial artifacts table..."
+            psql "$DATABASE_URL" -c "DROP TABLE IF EXISTS artifacts CASCADE;" || true
           fi
 
           # Wait a moment for DB to settle

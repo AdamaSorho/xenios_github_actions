@@ -43,6 +43,13 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Setup test database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          # Create service_role for RLS policies (Supabase compatibility)
+          psql -h localhost -U postgres -d xenios_test -c "CREATE ROLE service_role;" || true
+
       - name: Run migrations
         working-directory: apps/backend
         env:

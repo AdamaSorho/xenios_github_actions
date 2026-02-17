@@ -11,16 +11,18 @@ import (
 
 // InMemoryFileStorage is an in-memory implementation of FileStorageRepository for testing.
 type InMemoryFileStorage struct {
-	mu      sync.RWMutex
-	objects map[string]bool
-	baseURL string
+	mu       sync.RWMutex
+	objects  map[string]bool
+	contents map[string][]byte
+	baseURL  string
 }
 
 // NewInMemoryFileStorage creates a new InMemoryFileStorage.
 func NewInMemoryFileStorage() *InMemoryFileStorage {
 	return &InMemoryFileStorage{
-		objects: make(map[string]bool),
-		baseURL: "https://test-bucket.s3.amazonaws.com",
+		objects:  make(map[string]bool),
+		contents: make(map[string][]byte),
+		baseURL:  "https://test-bucket.s3.amazonaws.com",
 	}
 }
 
@@ -54,9 +56,33 @@ func (s *InMemoryFileStorage) ObjectExists(_ context.Context, key string) (bool,
 	return s.objects[key], nil
 }
 
+// DownloadFile retrieves the raw file content from mock storage.
+func (s *InMemoryFileStorage) DownloadFile(_ context.Context, key string) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	data, ok := s.contents[key]
+	if !ok {
+		return nil, fmt.Errorf("object not found: %s", key)
+	}
+	result := make([]byte, len(data))
+	copy(result, data)
+	return result, nil
+}
+
 // PutObject simulates adding an object to storage (for testing purposes).
 func (s *InMemoryFileStorage) PutObject(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.objects[key] = true
+}
+
+// PutObjectWithContent simulates adding an object with content to storage (for testing purposes).
+func (s *InMemoryFileStorage) PutObjectWithContent(key string, content []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.objects[key] = true
+	data := make([]byte, len(content))
+	copy(data, content)
+	s.contents[key] = data
 }

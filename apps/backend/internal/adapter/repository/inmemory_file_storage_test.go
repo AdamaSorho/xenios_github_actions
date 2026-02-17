@@ -80,3 +80,39 @@ func TestInMemoryFileStorage_ObjectExists_NotExists_ReturnsFalse(t *testing.T) {
 		t.Error("expected object to not exist")
 	}
 }
+
+func TestInMemoryFileStorage_DownloadFile_ExistingObject_ReturnsContent(t *testing.T) {
+	storage := NewInMemoryFileStorage()
+	content := []byte("test file content")
+	storage.PutObjectWithContent("test/key.pdf", content)
+
+	data, err := storage.DownloadFile(context.Background(), "test/key.pdf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(data) != "test file content" {
+		t.Errorf("expected content %q, got %q", "test file content", string(data))
+	}
+}
+
+func TestInMemoryFileStorage_DownloadFile_NonExistent_ReturnsError(t *testing.T) {
+	storage := NewInMemoryFileStorage()
+
+	_, err := storage.DownloadFile(context.Background(), "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent object")
+	}
+}
+
+func TestInMemoryFileStorage_PutObjectWithContent_AlsoSetsObjectExists(t *testing.T) {
+	storage := NewInMemoryFileStorage()
+	storage.PutObjectWithContent("test/key.pdf", []byte("content"))
+
+	exists, err := storage.ObjectExists(context.Background(), "test/key.pdf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Error("expected object to exist after PutObjectWithContent")
+	}
+}

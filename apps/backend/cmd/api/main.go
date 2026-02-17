@@ -19,6 +19,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/pdfextract"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -123,7 +124,7 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 
 		// Job queue endpoints (if database is available)
 		if pool != nil {
-			queueHandler, w := setupJobQueue(pool)
+			queueHandler, w := setupJobQueue(pool, auditRepo)
 			jobWorker = w
 			api.Post("/jobs", queueHandler.EnqueueJob)
 			api.Get("/jobs/status", queueHandler.GetQueueStatus)
@@ -216,7 +217,7 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 }
 
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
-func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+func setupJobQueue(pool *pgxpool.Pool, auditRepo domainrepo.AuditRepository) (*handler.QueueHandler, *worker.Worker) {
 	jobQueue := repository.NewPostgresJobQueue(pool)
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
@@ -224,7 +225,8 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	// Register placeholder handlers for job types without implementations yet
+	placeholderTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,12 +234,20 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
+
+	// Register InBody extraction handler
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	fileStorage := repository.NewInMemoryFileStorage()
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	pdfExtractor := pdfextract.NewInBodyExtractor()
+	extractUC := usecase.NewExtractInBodyUseCase(artifactRepo, fileStorage, measurementRepo, auditRepo, pdfExtractor)
+	w.RegisterHandler(entities.JobTypeExtractInBody, usecase.NewExtractInBodyJobHandler(extractUC))
 
 	ctx := context.Background()
 	w.Start(ctx)

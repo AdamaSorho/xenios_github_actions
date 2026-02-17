@@ -13,4 +13,8 @@ type CoachClientRepository interface {
 
 	// ListByCoachID retrieves all clients for a given coach with pagination.
 	ListByCoachID(ctx context.Context, coachID string, limit, offset int) ([]*entities.CoachClient, error)
+
+	// FindByCoachAndClient checks if a coach-client relationship exists.
+	// Returns the relationship if found, nil if not found.
+	FindByCoachAndClient(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error)
 }

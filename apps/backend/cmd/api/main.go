@@ -110,6 +110,13 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		api.Post("/coaches/{coachID}/clients", ccHandler.Create)
 		api.Get("/coaches/{coachID}/clients", ccHandler.List)
 
+		// Client measurements and profile endpoints
+		measurementHandler := setupMeasurementHandler(ccRepo, auditRepo)
+		api.Get("/clients/{clientID}/measurements", measurementHandler.ListMeasurements)
+		api.Get("/clients/{clientID}/measurements/latest", measurementHandler.LatestMeasurements)
+		api.Get("/clients/{clientID}/wearable-summaries", measurementHandler.ListWearableSummaries)
+		api.Get("/clients/{clientID}/profile-summary", measurementHandler.ProfileSummary)
+
 		// Audit log query endpoint (admin-only)
 		queryAuditUC := usecase.NewQueryAuditLogUseCase(auditRepo)
 		auditHandler := handler.NewAuditHandler(queryAuditUC)
@@ -257,6 +264,19 @@ func setupUploadHandler() *handler.UploadHandler {
 	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
 
 	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)
+}
+
+// setupMeasurementHandler wires up measurement and profile dependencies and returns the handler.
+func setupMeasurementHandler(ccRepo domainrepo.CoachClientRepository, auditRepo domainrepo.AuditRepository) *handler.MeasurementHandler {
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	wearableRepo := repository.NewInMemoryWearableSummaryRepository()
+
+	getMeasurementsUC := usecase.NewGetClientMeasurementsUseCase(measurementRepo, ccRepo, auditRepo)
+	getLatestUC := usecase.NewGetLatestMeasurementsUseCase(measurementRepo, ccRepo, auditRepo)
+	getWearableUC := usecase.NewGetWearableSummariesUseCase(wearableRepo, ccRepo, auditRepo)
+	getProfileSummaryUC := usecase.NewGetClientProfileSummaryUseCase(measurementRepo, wearableRepo, ccRepo, auditRepo)
+
+	return handler.NewMeasurementHandler(getMeasurementsUC, getLatestUC, getWearableUC, getProfileSummaryUC)
 }
 
 // getPort returns the port to listen on

@@ -5,4 +5,4 @@ DROP TRIGGER IF EXISTS update_insight_cards_updated_at ON insight_cards;
 DROP TABLE IF EXISTS wearable_summaries;
 DROP TABLE IF EXISTS insight_cards;
 DROP TABLE IF EXISTS measurements;
-DROP TABLE IF EXISTS artifacts;
+-- Note: artifacts table drop moved to migration 000010_create_artifacts_table.down.sql

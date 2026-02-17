@@ -1,23 +1,5 @@
--- Artifacts (files, images, documents attached to clients)
-CREATE TABLE IF NOT EXISTS artifacts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    uploaded_by UUID NOT NULL REFERENCES users(id),
-    artifact_type TEXT NOT NULL CHECK (artifact_type IN ('image', 'video', 'document', 'audio')),
-    file_url TEXT NOT NULL,
-    file_name TEXT NOT NULL,
-    file_size_bytes BIGINT,
-    mime_type TEXT,
-    description TEXT,
-    expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_artifacts_client_id ON artifacts(client_id);
-CREATE INDEX IF NOT EXISTS idx_artifacts_uploaded_by ON artifacts(uploaded_by);
-CREATE INDEX IF NOT EXISTS idx_artifacts_expires_at ON artifacts(expires_at);
-
-ALTER TABLE artifacts ENABLE ROW LEVEL SECURITY;
+-- Note: artifacts table was moved to migration 000010_create_artifacts_table.up.sql
+-- to avoid schema conflicts with the S3/R2 file storage implementation.
 
 -- Measurements (body measurements, vitals, etc.)
 CREATE TABLE IF NOT EXISTS measurements (

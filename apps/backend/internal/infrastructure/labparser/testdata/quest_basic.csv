@@ -1,0 +1,11 @@
+Test Name,Result,Units,Reference Range,Flag
+"Glucose, Fasting",98,mg/dL,70-100,
+Total Cholesterol,210,mg/dL,<200,H
+LDL Cholesterol,142,mg/dL,<100,H
+HDL Cholesterol,55,mg/dL,>40,
+Triglycerides,120,mg/dL,<150,
+Hemoglobin A1c,5.4,%,<5.7,
+"Testosterone, Total",650,ng/dL,300-1000,
+TSH,2.5,mIU/L,0.4-4.0,
+"Vitamin D, 25-Hydroxy",35,ng/mL,30-100,
+"Iron, Serum",80,mcg/dL,60-170,

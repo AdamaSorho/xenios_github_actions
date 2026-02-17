@@ -1,0 +1,8 @@
+Test,Value,Unit,Reference Range
+Fasting Glucose,105,mg/dL,70-100
+LDL-C,88,mg/dL,<100
+HDL-C,42,mg/dL,>40
+Triglyceride,165,mg/dL,<150
+A1C,6.1,%,<5.7
+TSH,0.3,mIU/L,0.4-4.0
+Vitamin D,22,ng/mL,30-100

@@ -19,6 +19,11 @@ func TestIsValidAuditAction_KnownActions_ReturnsTrue(t *testing.T) {
 		"auth.logout",
 		"auth.token_refreshed",
 		"auth.token_replay_detected",
+		"artifact.upload_requested",
+		"artifact.upload_confirmed",
+		"artifact.classified",
+		"artifact.download_requested",
+		"artifact.job_enqueued",
 	}
 
 	for _, action := range knownActions {

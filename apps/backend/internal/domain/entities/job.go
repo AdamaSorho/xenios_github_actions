@@ -31,6 +31,12 @@ const (
 	JobTypeAnalyticsAggregation  JobType = "analytics_aggregation"
 	JobTypeRiskDetection         JobType = "risk_detection"
 	JobTypeAudioCleanup          JobType = "audio_cleanup"
+	JobTypeExtractInBody         JobType = "extract_inbody"
+	JobTypeExtractLabResults     JobType = "extract_lab_results"
+	JobTypeExtractWearable       JobType = "extract_wearable"
+	JobTypeExtractNutrition      JobType = "extract_nutrition"
+	JobTypeTranscribeAudio       JobType = "transcribe_audio"
+	JobTypeClassifyDocument      JobType = "classify_document"
 )
 
 // JobStatus represents the current status of a job.
@@ -77,6 +83,27 @@ type QueueStatus struct {
 }
 
 // IsValidJobType returns true if the given job type is one of the known types.
+// DocumentSubtypeToJobType maps document subtypes to their corresponding extraction job types.
+var DocumentSubtypeToJobType = map[DocumentSubtype]JobType{
+	DocumentSubtypeInBodyPDF:    JobTypeExtractInBody,
+	DocumentSubtypeLabCSV:       JobTypeExtractLabResults,
+	DocumentSubtypeLabPDF:       JobTypeExtractLabResults,
+	DocumentSubtypeWearableCSV:  JobTypeExtractWearable,
+	DocumentSubtypeWearableJSON: JobTypeExtractWearable,
+	DocumentSubtypeNutritionCSV: JobTypeExtractNutrition,
+	DocumentSubtypeAudio:        JobTypeTranscribeAudio,
+	DocumentSubtypeOther:        JobTypeClassifyDocument,
+}
+
+// JobTypeForSubtype returns the appropriate job type for a given document subtype.
+func JobTypeForSubtype(subtype DocumentSubtype) JobType {
+	if jt, ok := DocumentSubtypeToJobType[subtype]; ok {
+		return jt
+	}
+	return JobTypeClassifyDocument
+}
+
+// IsValidJobType returns true if the given job type is one of the known types.
 func IsValidJobType(jt JobType) bool {
 	switch jt {
 	case JobTypeTranscription,
@@ -84,7 +111,13 @@ func IsValidJobType(jt JobType) bool {
 		JobTypeInsightGeneration,
 		JobTypeAnalyticsAggregation,
 		JobTypeRiskDetection,
-		JobTypeAudioCleanup:
+		JobTypeAudioCleanup,
+		JobTypeExtractInBody,
+		JobTypeExtractLabResults,
+		JobTypeExtractWearable,
+		JobTypeExtractNutrition,
+		JobTypeTranscribeAudio,
+		JobTypeClassifyDocument:
 		return true
 	}
 	return false

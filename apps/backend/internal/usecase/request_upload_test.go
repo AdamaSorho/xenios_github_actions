@@ -273,3 +273,67 @@ func TestRequestUpload_ZeroFileSize_ReturnsValidationError(t *testing.T) {
 		t.Errorf("expected ValidationError, got %T", err)
 	}
 }
+
+// --- DocumentSubtype hint tests ---
+
+func TestRequestUpload_WithValidDocumentSubtypeHint_StoresHint(t *testing.T) {
+	uc, artifactRepo, _, _ := newRequestUploadUseCase()
+
+	out, err := uc.Execute(context.Background(), RequestUploadInput{
+		FileName:        "inbody_scan.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		CoachID:         "coach-1",
+		DocumentSubtype: "inbody_pdf",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	artifact, err := artifactRepo.FindByID(context.Background(), out.ArtifactID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if artifact.DocumentSubtype != "inbody_pdf" {
+		t.Errorf("expected document_subtype 'inbody_pdf', got '%s'", artifact.DocumentSubtype)
+	}
+}
+
+func TestRequestUpload_WithEmptyDocumentSubtype_Succeeds(t *testing.T) {
+	uc, _, _, _ := newRequestUploadUseCase()
+
+	out, err := uc.Execute(context.Background(), RequestUploadInput{
+		FileName:        "report.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		CoachID:         "coach-1",
+		DocumentSubtype: "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.ArtifactID == "" {
+		t.Error("expected non-empty artifact ID")
+	}
+}
+
+func TestRequestUpload_WithInvalidDocumentSubtype_ReturnsValidationError(t *testing.T) {
+	uc, _, _, _ := newRequestUploadUseCase()
+
+	_, err := uc.Execute(context.Background(), RequestUploadInput{
+		FileName:        "report.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		CoachID:         "coach-1",
+		DocumentSubtype: "invalid_subtype",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid document_subtype")
+	}
+	if !IsValidationError(err) {
+		t.Errorf("expected ValidationError, got %T", err)
+	}
+}

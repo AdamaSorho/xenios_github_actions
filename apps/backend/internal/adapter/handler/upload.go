@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/xenios/backend/internal/adapter/middleware"
+	"github.com/xenios/backend/internal/domain/entities"
 	"github.com/xenios/backend/internal/usecase"
 )
 
@@ -47,10 +48,11 @@ func NewUploadHandler(
 
 // PresignRequest is the JSON request body for requesting a presigned upload URL.
 type PresignRequest struct {
-	FileName    string `json:"file_name"`
-	FileSize    int64  `json:"file_size"`
-	ContentType string `json:"content_type"`
-	ClientID    string `json:"client_id"`
+	FileName        string `json:"file_name"`
+	FileSize        int64  `json:"file_size"`
+	ContentType     string `json:"content_type"`
+	ClientID        string `json:"client_id"`
+	DocumentSubtype string `json:"document_subtype,omitempty"`
 }
 
 // RequestPresignedURL handles POST /api/v1/uploads/presign
@@ -68,11 +70,12 @@ func (h *UploadHandler) RequestPresignedURL(w http.ResponseWriter, r *http.Reque
 	}
 
 	out, err := h.requestUploadUC.Execute(r.Context(), usecase.RequestUploadInput{
-		FileName:    req.FileName,
-		FileSize:    req.FileSize,
-		ContentType: req.ContentType,
-		ClientID:    req.ClientID,
-		CoachID:     claims.Subject,
+		FileName:        req.FileName,
+		FileSize:        req.FileSize,
+		ContentType:     req.ContentType,
+		ClientID:        req.ClientID,
+		CoachID:         claims.Subject,
+		DocumentSubtype: entities.DocumentSubtype(req.DocumentSubtype),
 	})
 	if err != nil {
 		if usecase.IsValidationError(err) {

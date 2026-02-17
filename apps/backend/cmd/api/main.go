@@ -115,19 +115,21 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		auditHandler := handler.NewAuditHandler(queryAuditUC)
 		api.Get("/admin/audit", auditHandler.Query)
 
-		// File upload/download endpoints
-		uploadHandler := setupUploadHandler()
-		api.Post("/uploads/presign", uploadHandler.RequestPresignedURL)
-		api.Post("/uploads/{artifactID}/confirm", uploadHandler.ConfirmUpload)
-		api.Post("/uploads/{artifactID}/download", uploadHandler.RequestDownloadURL)
-
 		// Job queue endpoints (if database is available)
+		var jobQueue domainrepo.JobQueue
 		if pool != nil {
-			queueHandler, w := setupJobQueue(pool)
+			queueHandler, w, jq := setupJobQueue(pool)
 			jobWorker = w
+			jobQueue = jq
 			api.Post("/jobs", queueHandler.EnqueueJob)
 			api.Get("/jobs/status", queueHandler.GetQueueStatus)
 		}
+
+		// File upload/download endpoints
+		uploadHandler := setupUploadHandler(auditRepo, jobQueue)
+		api.Post("/uploads/presign", uploadHandler.RequestPresignedURL)
+		api.Post("/uploads/{artifactID}/confirm", uploadHandler.ConfirmUpload)
+		api.Post("/uploads/{artifactID}/download", uploadHandler.RequestDownloadURL)
 	})
 
 	return r, jobWorker, asyncAudit
@@ -216,7 +218,7 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 }
 
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
-func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker, domainrepo.JobQueue) {
 	jobQueue := repository.NewPostgresJobQueue(pool)
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
@@ -231,6 +233,12 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeAnalyticsAggregation,
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
+		entities.JobTypeExtractInBody,
+		entities.JobTypeExtractLabResults,
+		entities.JobTypeExtractWearable,
+		entities.JobTypeExtractNutrition,
+		entities.JobTypeTranscribeAudio,
+		entities.JobTypeClassifyDocument,
 	}
 	for _, jt := range allJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
@@ -243,17 +251,16 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
 
-	return queueHandler, w
+	return queueHandler, w, jobQueue
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.
-func setupUploadHandler() *handler.UploadHandler {
+func setupUploadHandler(auditRepo domainrepo.AuditRepository, jobQueue domainrepo.JobQueue) *handler.UploadHandler {
 	artifactRepo := repository.NewInMemoryArtifactRepository()
 	fileStorage := repository.NewInMemoryFileStorage()
-	auditRepo := repository.NewInMemoryAuditRepository()
 
 	requestUploadUC := usecase.NewRequestUploadUseCase(artifactRepo, fileStorage, auditRepo)
-	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo)
+	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo, jobQueue)
 	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
 
 	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)

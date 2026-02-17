@@ -399,13 +399,16 @@ func TestSetupJobQueue_ReturnsHandlerAndWorker(t *testing.T) {
 	}
 	defer pool.Close()
 
-	queueHandler, w := setupJobQueue(pool)
+	queueHandler, w, jq := setupJobQueue(pool)
 
 	if queueHandler == nil {
 		t.Error("expected non-nil QueueHandler")
 	}
 	if w == nil {
 		t.Error("expected non-nil Worker")
+	}
+	if jq == nil {
+		t.Error("expected non-nil JobQueue")
 	}
 	if !w.IsRunning() {
 		t.Error("expected worker to be running after setup")
@@ -422,12 +425,12 @@ func TestSetupJobQueue_RegistersAllJobTypes(t *testing.T) {
 	}
 	defer pool.Close()
 
-	_, w := setupJobQueue(pool)
+	_, w, _ := setupJobQueue(pool)
 	defer w.Stop()
 
 	types := w.RegisteredJobTypes()
-	if len(types) != 6 {
-		t.Errorf("expected 6 registered job types, got %d", len(types))
+	if len(types) != 12 {
+		t.Errorf("expected 12 registered job types, got %d", len(types))
 	}
 }
 
@@ -439,7 +442,7 @@ func TestSetupJobQueue_WorkerCanBeStopped(t *testing.T) {
 	}
 	defer pool.Close()
 
-	_, w := setupJobQueue(pool)
+	_, w, _ := setupJobQueue(pool)
 	if !w.IsRunning() {
 		t.Error("expected worker to be running")
 	}

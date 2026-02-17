@@ -76,3 +76,20 @@ func (r *InMemoryArtifactRepository) UpdateStatus(_ context.Context, id string, 
 	result := *art
 	return &result, nil
 }
+
+// UpdateDocumentSubtype updates the document subtype of an artifact.
+func (r *InMemoryArtifactRepository) UpdateDocumentSubtype(_ context.Context, id string, subtype entities.DocumentSubtype) (*entities.Artifact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	art, ok := r.artifacts[id]
+	if !ok {
+		return nil, fmt.Errorf("artifact not found: %s", id)
+	}
+
+	art.DocumentSubtype = subtype
+	art.UpdatedAt = time.Now()
+
+	result := *art
+	return &result, nil
+}

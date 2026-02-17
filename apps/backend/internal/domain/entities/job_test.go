@@ -15,6 +15,12 @@ func TestIsValidJobType_ValidTypes_ReturnsTrue(t *testing.T) {
 		JobTypeAnalyticsAggregation,
 		JobTypeRiskDetection,
 		JobTypeAudioCleanup,
+		JobTypeExtractInBody,
+		JobTypeExtractLabResults,
+		JobTypeExtractWearable,
+		JobTypeExtractNutrition,
+		JobTypeTranscribeAudio,
+		JobTypeClassifyDocument,
 	}
 
 	for _, jt := range validTypes {
@@ -297,6 +303,60 @@ func TestJobStatusConstants_Values(t *testing.T) {
 	for _, tc := range tests {
 		if string(tc.status) != tc.expected {
 			t.Errorf("expected %q, got %q", tc.expected, string(tc.status))
+		}
+	}
+}
+
+// --- JobTypeForSubtype tests ---
+
+func TestJobTypeForSubtype_AllMappings(t *testing.T) {
+	tests := []struct {
+		subtype  DocumentSubtype
+		expected JobType
+	}{
+		{DocumentSubtypeInBodyPDF, JobTypeExtractInBody},
+		{DocumentSubtypeLabCSV, JobTypeExtractLabResults},
+		{DocumentSubtypeLabPDF, JobTypeExtractLabResults},
+		{DocumentSubtypeWearableCSV, JobTypeExtractWearable},
+		{DocumentSubtypeWearableJSON, JobTypeExtractWearable},
+		{DocumentSubtypeNutritionCSV, JobTypeExtractNutrition},
+		{DocumentSubtypeAudio, JobTypeTranscribeAudio},
+		{DocumentSubtypeOther, JobTypeClassifyDocument},
+	}
+
+	for _, tc := range tests {
+		t.Run(string(tc.subtype), func(t *testing.T) {
+			got := JobTypeForSubtype(tc.subtype)
+			if got != tc.expected {
+				t.Errorf("expected %q for subtype %q, got %q", tc.expected, tc.subtype, got)
+			}
+		})
+	}
+}
+
+func TestJobTypeForSubtype_UnknownSubtype_ReturnsClassifyDocument(t *testing.T) {
+	got := JobTypeForSubtype("unknown_subtype")
+	if got != JobTypeClassifyDocument {
+		t.Errorf("expected %q for unknown subtype, got %q", JobTypeClassifyDocument, got)
+	}
+}
+
+func TestNewJobTypeConstants_Values(t *testing.T) {
+	tests := []struct {
+		jobType  JobType
+		expected string
+	}{
+		{JobTypeExtractInBody, "extract_inbody"},
+		{JobTypeExtractLabResults, "extract_lab_results"},
+		{JobTypeExtractWearable, "extract_wearable"},
+		{JobTypeExtractNutrition, "extract_nutrition"},
+		{JobTypeTranscribeAudio, "transcribe_audio"},
+		{JobTypeClassifyDocument, "classify_document"},
+	}
+
+	for _, tc := range tests {
+		if string(tc.jobType) != tc.expected {
+			t.Errorf("expected %q, got %q", tc.expected, string(tc.jobType))
 		}
 	}
 }

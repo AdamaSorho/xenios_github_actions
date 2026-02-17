@@ -230,3 +230,113 @@ func TestAllowedFileExtensions_AllTypesPresent(t *testing.T) {
 		}
 	}
 }
+
+// --- DocumentSubtype tests ---
+
+func TestIsValidDocumentSubtype_AllValidSubtypes_ReturnTrue(t *testing.T) {
+	validSubtypes := []DocumentSubtype{
+		DocumentSubtypeInBodyPDF,
+		DocumentSubtypeLabCSV,
+		DocumentSubtypeLabPDF,
+		DocumentSubtypeWearableCSV,
+		DocumentSubtypeWearableJSON,
+		DocumentSubtypeNutritionCSV,
+		DocumentSubtypeAudio,
+		DocumentSubtypeOther,
+	}
+	for _, ds := range validSubtypes {
+		if !IsValidDocumentSubtype(ds) {
+			t.Errorf("expected %q to be a valid document subtype", ds)
+		}
+	}
+}
+
+func TestIsValidDocumentSubtype_InvalidSubtype_ReturnFalse(t *testing.T) {
+	if IsValidDocumentSubtype("invalid_subtype") {
+		t.Error("expected 'invalid_subtype' to be invalid")
+	}
+}
+
+func TestIsValidDocumentSubtype_EmptyString_ReturnFalse(t *testing.T) {
+	if IsValidDocumentSubtype("") {
+		t.Error("expected empty string to be invalid")
+	}
+}
+
+// --- ClassifyDocumentSubtype tests ---
+
+func TestClassifyDocumentSubtype_WithValidHint_UsesHint(t *testing.T) {
+	result := ClassifyDocumentSubtype(DocumentSubtypeInBodyPDF, "report.pdf", "application/pdf")
+	if result != DocumentSubtypeInBodyPDF {
+		t.Errorf("expected %q, got %q", DocumentSubtypeInBodyPDF, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_WithValidLabCSVHint_UsesHint(t *testing.T) {
+	result := ClassifyDocumentSubtype(DocumentSubtypeLabCSV, "data.csv", "text/csv")
+	if result != DocumentSubtypeLabCSV {
+		t.Errorf("expected %q, got %q", DocumentSubtypeLabCSV, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_HintTakesPrecedenceOverExtension(t *testing.T) {
+	// Hint says inbody_pdf but file is a CSV - hint should win
+	result := ClassifyDocumentSubtype(DocumentSubtypeInBodyPDF, "data.csv", "text/csv")
+	if result != DocumentSubtypeInBodyPDF {
+		t.Errorf("expected hint to take precedence: expected %q, got %q", DocumentSubtypeInBodyPDF, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_InvalidHint_FallsBackToExtension(t *testing.T) {
+	result := ClassifyDocumentSubtype("invalid_hint", "recording.mp3", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %q, got %q", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_NoHint_AudioFile_ReturnsAudio(t *testing.T) {
+	tests := []struct {
+		fileName    string
+		contentType string
+	}{
+		{"recording.mp3", "audio/mpeg"},
+		{"session.wav", "audio/wav"},
+		{"memo.aac", "audio/aac"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.fileName, func(t *testing.T) {
+			result := ClassifyDocumentSubtype("", tt.fileName, tt.contentType)
+			if result != DocumentSubtypeAudio {
+				t.Errorf("expected %q for %s, got %q", DocumentSubtypeAudio, tt.fileName, result)
+			}
+		})
+	}
+}
+
+func TestClassifyDocumentSubtype_NoHint_JSONFile_ReturnsWearableJSON(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "export.json", "application/json")
+	if result != DocumentSubtypeWearableJSON {
+		t.Errorf("expected %q, got %q", DocumentSubtypeWearableJSON, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_NoHint_PDFFile_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "report.pdf", "application/pdf")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_NoHint_CSVFile_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "data.csv", "text/csv")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_EmptyHint_XMLFile_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "config.xml", "application/xml")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}

@@ -782,7 +782,7 @@ func TestMigrations_CheckConstraints(t *testing.T) {
 	checkedColumns := map[string][]string{
 		"000001_create_users_table.up.sql":       {"role"},
 		"000003_create_sessions_tables.up.sql":   {"session_type", "status", "speaker", "cue_type"},
-		"000004_create_health_data_tables.up.sql": {"artifact_type", "category", "status", "priority"},
+		"000004_create_health_data_tables.up.sql": {"category", "status", "priority"},
 		"000006_create_programming_tables.up.sql": {"category", "difficulty", "status", "intensity_level", "session_type", "cue_type", "adjustment_type"},
 	}
 

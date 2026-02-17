@@ -156,7 +156,7 @@ func TestPostgresAuditRepository_LogEvent_WithIPAndUserAgent(t *testing.T) {
 
 	// Verify IP and user agent were stored
 	var ipAddress, userAgent string
-	err = pool.QueryRow(ctx, "SELECT ip_address::TEXT, user_agent FROM events_audit WHERE entity_id = $1 AND action = 'user.login'", users.user1).Scan(&ipAddress, &userAgent)
+	err = pool.QueryRow(ctx, "SELECT host(ip_address), user_agent FROM events_audit WHERE entity_id = $1 AND action = 'user.login'", users.user1).Scan(&ipAddress, &userAgent)
 	if err != nil {
 		t.Fatalf("failed to query IP and user agent: %v", err)
 	}

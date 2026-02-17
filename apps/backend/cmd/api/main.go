@@ -115,6 +115,15 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		auditHandler := handler.NewAuditHandler(queryAuditUC)
 		api.Get("/admin/audit", auditHandler.Query)
 
+		// Insight card approval queue endpoints
+		insightHandler := setupInsightHandler(auditRepo)
+		api.Get("/insights/queue", insightHandler.GetQueue)
+		api.Put("/insights/{insightID}", insightHandler.Edit)
+		api.Put("/insights/{insightID}/approve", insightHandler.Approve)
+		api.Put("/insights/{insightID}/dismiss", insightHandler.Dismiss)
+		api.Put("/insights/{insightID}/share", insightHandler.Share)
+		api.Get("/clients/{clientID}/insights", insightHandler.GetClientInsights)
+
 		// File upload/download endpoints
 		uploadHandler := setupUploadHandler()
 		api.Post("/uploads/presign", uploadHandler.RequestPresignedURL)
@@ -244,6 +253,20 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// setupInsightHandler wires up insight card approval queue dependencies and returns the handler.
+func setupInsightHandler(auditRepo domainrepo.AuditRepository) *handler.InsightHandler {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+
+	getQueueUC := usecase.NewGetInsightQueueUseCase(insightRepo)
+	approveUC := usecase.NewApproveInsightUseCase(insightRepo, auditRepo)
+	dismissUC := usecase.NewDismissInsightUseCase(insightRepo, auditRepo)
+	editUC := usecase.NewEditInsightUseCase(insightRepo, auditRepo)
+	shareUC := usecase.NewShareInsightUseCase(insightRepo, auditRepo)
+	getClientUC := usecase.NewGetClientInsightsUseCase(insightRepo)
+
+	return handler.NewInsightHandler(getQueueUC, approveUC, dismissUC, editUC, shareUC, getClientUC)
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

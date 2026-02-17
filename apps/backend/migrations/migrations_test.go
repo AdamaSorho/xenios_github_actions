@@ -65,7 +65,7 @@ func TestMigrations_AllFilesExist(t *testing.T) {
 		"000007_create_rls_policies",
 		"000008_create_job_queue",
 		"000009_create_refresh_tokens",
-		"000010_audit_trigger",
+		"000011_audit_trigger",
 	}
 
 	dir := migrationDir(t)
@@ -414,7 +414,7 @@ func TestMigrations_EventsAudit_AppendOnly(t *testing.T) {
 // TestMigrations_AuditTrigger_ReplacesRules verifies that migration 000010 replaces
 // rules with trigger-based append-only enforcement.
 func TestMigrations_AuditTrigger_ReplacesRules(t *testing.T) {
-	sql := strings.ToLower(readMigrationSQL(t, "000010_audit_trigger.up.sql"))
+	sql := strings.ToLower(readMigrationSQL(t, "000011_audit_trigger.up.sql"))
 
 	if !strings.Contains(sql, "drop rule if exists events_audit_no_update") {
 		t.Error("000010 should drop the no-update rule")
@@ -438,7 +438,7 @@ func TestMigrations_AuditTrigger_ReplacesRules(t *testing.T) {
 
 // TestMigrations_AuditTrigger_Down_RestoresRules verifies that the down migration restores rules.
 func TestMigrations_AuditTrigger_Down_RestoresRules(t *testing.T) {
-	sql := strings.ToLower(readMigrationSQL(t, "000010_audit_trigger.down.sql"))
+	sql := strings.ToLower(readMigrationSQL(t, "000011_audit_trigger.down.sql"))
 
 	if !strings.Contains(sql, "drop trigger if exists events_audit_no_update") {
 		t.Error("000010 down should drop the update trigger")

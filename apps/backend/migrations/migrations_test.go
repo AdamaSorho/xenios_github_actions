@@ -1164,18 +1164,34 @@ func TestMigrations_Integration_DownReverses(t *testing.T) {
 		t.Logf("reversed: %s", f)
 	}
 
-	// Verify all tables are gone
+	// Verify all tables are gone (except schema_migrations from migrate tool)
 	var tableCount int
 	err = pool.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM information_schema.tables
 		WHERE table_schema = 'public'
 		  AND table_type = 'BASE TABLE'
+		  AND table_name != 'schema_migrations'
 	`).Scan(&tableCount)
 	if err != nil {
 		t.Fatalf("failed to count tables: %v", err)
 	}
 	if tableCount != 0 {
-		t.Errorf("expected 0 tables after down migrations, got %d", tableCount)
+		// Print which tables remain for debugging
+		rows, _ := pool.Query(ctx, `
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema = 'public'
+			  AND table_type = 'BASE TABLE'
+			  AND table_name != 'schema_migrations'
+		`)
+		var remaining []string
+		for rows.Next() {
+			var name string
+			rows.Scan(&name)
+			remaining = append(remaining, name)
+		}
+		rows.Close()
+		t.Errorf("expected 0 tables after down migrations, got %d: %v", tableCount, remaining)
 	}
 }

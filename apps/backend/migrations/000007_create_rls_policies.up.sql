@@ -130,18 +130,7 @@ CREATE POLICY form_cues_tracking_access ON form_cues_tracking
         )
     );
 
--- ============================================================
--- ARTIFACTS
--- ============================================================
-DROP POLICY IF EXISTS artifacts_client_access ON artifacts;
-CREATE POLICY artifacts_client_access ON artifacts
-    FOR ALL
-    USING (client_id = current_app_user_id());
-
-DROP POLICY IF EXISTS artifacts_coach_access ON artifacts;
-CREATE POLICY artifacts_coach_access ON artifacts
-    FOR ALL
-    USING (is_coach_of(client_id));
+-- Note: artifacts RLS policies moved to migration 000010_create_artifacts_table.up.sql
 
 -- ============================================================
 -- MEASUREMENTS

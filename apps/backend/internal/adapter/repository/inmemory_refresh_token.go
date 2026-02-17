@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ func (r *InMemoryRefreshTokenRepository) Create(_ context.Context, userID, token
 	defer r.mu.Unlock()
 
 	r.count++
-	id := "rt-" + time.Now().Format("20060102150405") + "-" + string(rune('0'+r.count))
+	id := fmt.Sprintf("rt-%d", r.count)
 
 	rt := &entities.RefreshToken{
 		ID:        id,

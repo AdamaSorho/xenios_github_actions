@@ -3,9 +3,9 @@ package usecase
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/xenios/backend/internal/adapter/repository"
-	"github.com/xenios/backend/internal/infrastructure/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -13,8 +13,8 @@ func newRefreshUseCase() (*RefreshTokenUseCase, *RegisterUserUseCase, *LoginUser
 	userRepo := repository.NewInMemoryUserRepository()
 	tokenRepo := repository.NewInMemoryRefreshTokenRepository()
 	auditRepo := repository.NewInMemoryAuditRepository()
-	tokenSvc := auth.NewJWTTokenService("test-secret", 900)
-	hasher := auth.NewBcryptHasher(bcrypt.MinCost)
+	tokenSvc := newStubTokenService("test-secret", 900*time.Second)
+	hasher := newStubHasher(bcrypt.MinCost)
 
 	registerUC := NewRegisterUserUseCase(userRepo, tokenRepo, tokenSvc, auditRepo, hasher)
 	loginUC := NewLoginUserUseCase(userRepo, tokenRepo, tokenSvc, auditRepo, hasher)
@@ -110,7 +110,7 @@ func TestRefreshToken_TokenReuse_RevokesAllTokens(t *testing.T) {
 
 	// Check audit log for replay detection
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.token_replay_detected" {
 			found = true
 			break
@@ -171,7 +171,7 @@ func TestRefreshToken_AuditEventLogged(t *testing.T) {
 	}
 
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.token_refreshed" {
 			found = true
 			break

@@ -3,9 +3,9 @@ package usecase
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/xenios/backend/internal/adapter/repository"
-	"github.com/xenios/backend/internal/infrastructure/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -13,8 +13,8 @@ func newLogoutUseCase() (*LogoutUserUseCase, *RegisterUserUseCase, *RefreshToken
 	userRepo := repository.NewInMemoryUserRepository()
 	tokenRepo := repository.NewInMemoryRefreshTokenRepository()
 	auditRepo := repository.NewInMemoryAuditRepository()
-	tokenSvc := auth.NewJWTTokenService("test-secret", 900)
-	hasher := auth.NewBcryptHasher(bcrypt.MinCost)
+	tokenSvc := newStubTokenService("test-secret", 900*time.Second)
+	hasher := newStubHasher(bcrypt.MinCost)
 
 	registerUC := NewRegisterUserUseCase(userRepo, tokenRepo, tokenSvc, auditRepo, hasher)
 	refreshUC := NewRefreshTokenUseCase(userRepo, tokenRepo, tokenSvc, auditRepo)
@@ -81,7 +81,7 @@ func TestLogoutUser_AuditEventLogged(t *testing.T) {
 	}
 
 	found := false
-	for _, e := range auditRepo.Events {
+	for _, e := range auditRepo.GetEvents() {
 		if e.Action == "auth.logout" {
 			found = true
 			break

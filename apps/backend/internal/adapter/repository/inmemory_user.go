@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ func (r *InMemoryUserRepository) Create(_ context.Context, email, passwordHash, 
 	defer r.mu.Unlock()
 
 	r.count++
-	id := "user-" + time.Now().Format("20060102150405") + "-" + string(rune('0'+r.count))
+	id := fmt.Sprintf("user-%d", r.count)
 	now := time.Now()
 
 	user := &entities.User{

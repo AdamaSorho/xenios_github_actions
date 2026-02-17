@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -121,7 +122,14 @@ func (uc *RegisterUserUseCase) Execute(ctx context.Context, input RegisterInput)
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, user.ID, "user.registered", "user", user.ID, nil)
+	if auditErr := uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    user.ID,
+		Action:     "user.registered",
+		EntityType: "user",
+		EntityID:   user.ID,
+	}); auditErr != nil {
+		log.Printf("audit log error: %v", auditErr)
+	}
 
 	return &RegisterOutput{
 		User: user,

@@ -16,6 +16,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: xenios_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -27,8 +43,28 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Setup test database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          # Drop and recreate test database to ensure clean state
+          psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS xenios_test;"
+          psql -h localhost -U postgres -c "CREATE DATABASE xenios_test;"
+          # Create service_role for RLS policies (Supabase compatibility)
+          psql -h localhost -U postgres -d xenios_test -c "CREATE ROLE service_role;" || true
+
+      - name: Run migrations
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/xenios_test?sslmode=disable
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          migrate -path migrations -database "$DATABASE_URL" up
+
       - name: Run tests
         working-directory: apps/backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/xenios_test?sslmode=disable
         run: go test -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage

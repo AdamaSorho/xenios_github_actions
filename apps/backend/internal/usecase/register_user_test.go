@@ -3,9 +3,9 @@ package usecase
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/xenios/backend/internal/adapter/repository"
-	"github.com/xenios/backend/internal/infrastructure/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -13,8 +13,8 @@ func newRegisterUseCase() (*RegisterUserUseCase, *repository.InMemoryUserReposit
 	userRepo := repository.NewInMemoryUserRepository()
 	tokenRepo := repository.NewInMemoryRefreshTokenRepository()
 	auditRepo := repository.NewInMemoryAuditRepository()
-	tokenSvc := auth.NewJWTTokenService("test-secret", 900)
-	hasher := auth.NewBcryptHasher(bcrypt.MinCost)
+	tokenSvc := newStubTokenService("test-secret", 900*time.Second)
+	hasher := newStubHasher(bcrypt.MinCost)
 
 	uc := NewRegisterUserUseCase(userRepo, tokenRepo, tokenSvc, auditRepo, hasher)
 	return uc, userRepo, tokenRepo, auditRepo
@@ -246,11 +246,12 @@ func TestRegisterUser_AuditEventLogged(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(auditRepo.Events) == 0 {
+	if auditRepo.EventCount() == 0 {
 		t.Fatal("expected audit event to be logged")
 	}
-	if auditRepo.Events[0].Action != "user.registered" {
-		t.Errorf("expected action 'user.registered', got '%s'", auditRepo.Events[0].Action)
+	events := auditRepo.GetEvents()
+	if events[0].Action != "user.registered" {
+		t.Errorf("expected action 'user.registered', got '%s'", events[0].Action)
 	}
 }
 

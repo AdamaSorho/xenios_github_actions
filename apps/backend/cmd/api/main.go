@@ -16,6 +16,7 @@ import (
 	"github.com/xenios/backend/internal/adapter/middleware"
 	"github.com/xenios/backend/internal/adapter/repository"
 	"github.com/xenios/backend/internal/domain/entities"
+	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
 	"github.com/xenios/backend/internal/infrastructure/worker"
@@ -36,13 +37,18 @@ func setupServer() (*http.Server, func()) {
 	cfg := config.Load()
 
 	healthHandler, pool, cleanup := setupHealthHandler()
-	router, jobWorker := configureRoutes(cfg, healthHandler, pool)
+	router, jobWorker, asyncAudit := configureRoutes(cfg, healthHandler, pool)
 
 	fullCleanup := func() {
 		if jobWorker != nil {
 			log.Println("Stopping job worker...")
 			jobWorker.Stop()
 			log.Println("Job worker stopped")
+		}
+		if asyncAudit != nil {
+			log.Println("Stopping async audit logger...")
+			asyncAudit.Stop()
+			log.Println("Async audit logger stopped")
 		}
 		cleanup()
 	}
@@ -57,13 +63,14 @@ func setupServer() (*http.Server, func()) {
 }
 
 // configureRoutes sets up the Chi router with middleware and all routes.
-func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, pool *pgxpool.Pool) (chi.Router, *worker.Worker) {
+func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, pool *pgxpool.Pool) (chi.Router, *worker.Worker, *repository.AsyncAuditRepository) {
 	r := chi.NewRouter()
 
 	// Middleware chain
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(middleware.AuditContextMiddleware)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -73,12 +80,15 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		MaxAge:           300,
 	}))
 
+	// Set up audit repository (async for non-blocking logging)
+	auditRepo, asyncAudit := setupAuditRepository(pool)
+
 	// Public routes
 	r.Get("/api/health", healthHandler.Health)
 	r.Get("/version", handler.NewVersionHandler().Version)
 
 	// Auth routes (public — no JWT required)
-	authHandler := setupAuthHandler(cfg)
+	authHandler := setupAuthHandler(cfg, auditRepo)
 	r.Post("/api/auth/register", authHandler.Register)
 	r.Post("/api/auth/login", authHandler.Login)
 	r.Post("/api/auth/refresh", authHandler.Refresh)
@@ -100,6 +110,11 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		api.Post("/coaches/{coachID}/clients", ccHandler.Create)
 		api.Get("/coaches/{coachID}/clients", ccHandler.List)
 
+		// Audit log query endpoint (admin-only)
+		queryAuditUC := usecase.NewQueryAuditLogUseCase(auditRepo)
+		auditHandler := handler.NewAuditHandler(queryAuditUC)
+		api.Get("/admin/audit", auditHandler.Query)
+
 		// File upload/download endpoints
 		uploadHandler := setupUploadHandler()
 		api.Post("/uploads/presign", uploadHandler.RequestPresignedURL)
@@ -115,14 +130,32 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		}
 	})
 
-	return r, jobWorker
+	return r, jobWorker, asyncAudit
+}
+
+// setupAuditRepository creates the audit repository with async wrapper.
+// Uses PostgreSQL when database is available, in-memory otherwise.
+func setupAuditRepository(pool *pgxpool.Pool) (domainrepo.AuditRepository, *repository.AsyncAuditRepository) {
+	var inner repository.AuditRepositoryInterface
+	if pool != nil {
+		inner = repository.NewPostgresAuditRepository(pool)
+		log.Println("Audit logging configured with PostgreSQL backend")
+	} else {
+		inner = repository.NewInMemoryAuditRepository()
+		log.Println("Audit logging configured with in-memory backend (no database)")
+	}
+
+	asyncRepo := repository.NewAsyncAuditRepository(inner, 1000)
+	asyncRepo.Start()
+	log.Println("Async audit logger started with buffer size 1000")
+
+	return asyncRepo, asyncRepo
 }
 
 // setupAuthHandler wires up auth dependencies and returns the handler.
-func setupAuthHandler(cfg *config.Config) *handler.AuthHandler {
+func setupAuthHandler(cfg *config.Config, auditRepo domainrepo.AuditRepository) *handler.AuthHandler {
 	userRepo := repository.NewInMemoryUserRepository()
 	tokenRepo := repository.NewInMemoryRefreshTokenRepository()
-	auditRepo := repository.NewInMemoryAuditRepository()
 
 	jwtSecret := cfg.JWTSecret
 	if jwtSecret == "" {

@@ -74,10 +74,16 @@ func (uc *RequestDownloadUseCase) Execute(ctx context.Context, input RequestDown
 		return nil, fmt.Errorf("generate download url: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, input.CoachID, "artifact.download_requested", "artifact", input.ArtifactID, map[string]interface{}{
-		"file_name":   artifact.FileName,
-		"storage_key": artifact.StorageKey,
-		"client_id":   artifact.ClientID,
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    input.CoachID,
+		Action:     "artifact.download_requested",
+		EntityType: "artifact",
+		EntityID:   input.ArtifactID,
+		Metadata: map[string]interface{}{
+			"file_name":   artifact.FileName,
+			"storage_key": artifact.StorageKey,
+			"client_id":   artifact.ClientID,
+		},
 	})
 
 	return &RequestDownloadOutput{

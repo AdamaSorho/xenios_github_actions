@@ -2,22 +2,18 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
-)
+	"time"
 
-// AuditEvent is a recorded audit event (for testing/in-memory use).
-type AuditEvent struct {
-	ActorID    string
-	Action     string
-	EntityType string
-	EntityID   string
-	Metadata   map[string]interface{}
-}
+	"github.com/xenios/backend/internal/domain/entities"
+)
 
 // InMemoryAuditRepository is an in-memory implementation of AuditRepository.
 type InMemoryAuditRepository struct {
 	mu     sync.RWMutex
-	Events []AuditEvent
+	events []*entities.AuditEvent
+	count  int
 }
 
 // NewInMemoryAuditRepository creates a new InMemoryAuditRepository.
@@ -26,16 +22,84 @@ func NewInMemoryAuditRepository() *InMemoryAuditRepository {
 }
 
 // LogEvent records an audit event.
-func (r *InMemoryAuditRepository) LogEvent(_ context.Context, actorID, action, entityType, entityID string, metadata map[string]interface{}) error {
+func (r *InMemoryAuditRepository) LogEvent(_ context.Context, event *entities.AuditEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.Events = append(r.Events, AuditEvent{
-		ActorID:    actorID,
-		Action:     action,
-		EntityType: entityType,
-		EntityID:   entityID,
-		Metadata:   metadata,
-	})
+	r.count++
+	stored := *event
+	if stored.ID == "" {
+		stored.ID = fmt.Sprintf("audit-%d", r.count)
+	}
+	if stored.CreatedAt.IsZero() {
+		stored.CreatedAt = time.Now()
+	}
+
+	r.events = append(r.events, &stored)
 	return nil
+}
+
+// Query returns audit events matching the filter.
+func (r *InMemoryAuditRepository) Query(_ context.Context, filter entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var matched []*entities.AuditEvent
+	for _, e := range r.events {
+		if filter.ActorID != "" && e.ActorID != filter.ActorID {
+			continue
+		}
+		if filter.Action != "" && e.Action != filter.Action {
+			continue
+		}
+		if filter.EntityType != "" && e.EntityType != filter.EntityType {
+			continue
+		}
+		if filter.EntityID != "" && e.EntityID != filter.EntityID {
+			continue
+		}
+		if filter.From != nil && e.CreatedAt.Before(*filter.From) {
+			continue
+		}
+		if filter.To != nil && e.CreatedAt.After(*filter.To) {
+			continue
+		}
+		matched = append(matched, e)
+	}
+
+	total := len(matched)
+
+	// Apply pagination
+	offset := filter.Offset
+	if offset > len(matched) {
+		offset = len(matched)
+	}
+	matched = matched[offset:]
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > len(matched) {
+		limit = len(matched)
+	}
+	matched = matched[:limit]
+
+	return matched, total, nil
+}
+
+// EventCount returns the number of stored events (for testing).
+func (r *InMemoryAuditRepository) EventCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.events)
+}
+
+// GetEvents returns a snapshot copy of all stored events (for testing).
+func (r *InMemoryAuditRepository) GetEvents() []*entities.AuditEvent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cp := make([]*entities.AuditEvent, len(r.events))
+	copy(cp, r.events)
+	return cp
 }

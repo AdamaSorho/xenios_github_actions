@@ -247,11 +247,12 @@ func TestRequestUpload_AuditEventLogged(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(auditRepo.Events) == 0 {
+	events := auditRepo.GetEvents()
+	if len(events) == 0 {
 		t.Fatal("expected audit event to be logged")
 	}
-	if auditRepo.Events[0].Action != "artifact.upload_requested" {
-		t.Errorf("expected action 'artifact.upload_requested', got '%s'", auditRepo.Events[0].Action)
+	if events[0].Action != "artifact.upload_requested" {
+		t.Errorf("expected action 'artifact.upload_requested', got '%s'", events[0].Action)
 	}
 }
 

@@ -486,7 +486,8 @@ func TestConfigureRoutes_WithoutPool_NoJobEndpoints(t *testing.T) {
 		CORSOrigins: []string{"http://localhost:3000"},
 	}
 	healthHandler := handler.NewHealthHandler()
-	router, w := configureRoutes(cfg, healthHandler, nil)
+	router, w, asyncAudit := configureRoutes(cfg, healthHandler, nil)
+	defer asyncAudit.Stop()
 
 	if router == nil {
 		t.Error("expected non-nil router")
@@ -509,7 +510,8 @@ func TestConfigureRoutes_WithPool_RegistersJobEndpoints(t *testing.T) {
 		CORSOrigins: []string{"http://localhost:3000"},
 	}
 	healthHandler := handler.NewHealthHandler()
-	router, w := configureRoutes(cfg, healthHandler, pool)
+	router, w, asyncAudit := configureRoutes(cfg, healthHandler, pool)
+	defer asyncAudit.Stop()
 
 	if router == nil {
 		t.Error("expected non-nil router")

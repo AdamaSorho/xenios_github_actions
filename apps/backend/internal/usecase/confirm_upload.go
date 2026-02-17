@@ -82,10 +82,16 @@ func (uc *ConfirmUploadUseCase) Execute(ctx context.Context, input ConfirmUpload
 		return nil, fmt.Errorf("update artifact status: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, input.CoachID, "artifact.upload_confirmed", "artifact", input.ArtifactID, map[string]interface{}{
-		"storage_key": artifact.StorageKey,
-		"file_name":   artifact.FileName,
-		"client_id":   artifact.ClientID,
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    input.CoachID,
+		Action:     "artifact.upload_confirmed",
+		EntityType: "artifact",
+		EntityID:   input.ArtifactID,
+		Metadata: map[string]interface{}{
+			"storage_key": artifact.StorageKey,
+			"file_name":   artifact.FileName,
+			"client_id":   artifact.ClientID,
+		},
 	})
 
 	return &ConfirmUploadOutput{

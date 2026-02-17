@@ -64,6 +64,8 @@ func TestMigrations_AllFilesExist(t *testing.T) {
 		"000006_create_programming_tables",
 		"000007_create_rls_policies",
 		"000008_create_job_queue",
+		"000009_create_refresh_tokens",
+		"000011_audit_trigger",
 	}
 
 	dir := migrationDir(t)
@@ -409,6 +411,49 @@ func TestMigrations_EventsAudit_AppendOnly(t *testing.T) {
 	}
 }
 
+// TestMigrations_AuditTrigger_ReplacesRules verifies that migration 000010 replaces
+// rules with trigger-based append-only enforcement.
+func TestMigrations_AuditTrigger_ReplacesRules(t *testing.T) {
+	sql := strings.ToLower(readMigrationSQL(t, "000011_audit_trigger.up.sql"))
+
+	if !strings.Contains(sql, "drop rule if exists events_audit_no_update") {
+		t.Error("000010 should drop the no-update rule")
+	}
+	if !strings.Contains(sql, "drop rule if exists events_audit_no_delete") {
+		t.Error("000010 should drop the no-delete rule")
+	}
+	if !strings.Contains(sql, "prevent_audit_mutation") {
+		t.Error("000010 should create prevent_audit_mutation trigger function")
+	}
+	if !strings.Contains(sql, "raise exception") {
+		t.Error("000010 trigger should raise an exception on mutation attempts")
+	}
+	if !strings.Contains(sql, "before update") {
+		t.Error("000010 should create a BEFORE UPDATE trigger")
+	}
+	if !strings.Contains(sql, "before delete") {
+		t.Error("000010 should create a BEFORE DELETE trigger")
+	}
+}
+
+// TestMigrations_AuditTrigger_Down_RestoresRules verifies that the down migration restores rules.
+func TestMigrations_AuditTrigger_Down_RestoresRules(t *testing.T) {
+	sql := strings.ToLower(readMigrationSQL(t, "000011_audit_trigger.down.sql"))
+
+	if !strings.Contains(sql, "drop trigger if exists events_audit_no_update") {
+		t.Error("000010 down should drop the update trigger")
+	}
+	if !strings.Contains(sql, "drop trigger if exists events_audit_no_delete") {
+		t.Error("000010 down should drop the delete trigger")
+	}
+	if !strings.Contains(sql, "drop function if exists prevent_audit_mutation") {
+		t.Error("000010 down should drop the trigger function")
+	}
+	if !strings.Contains(sql, "do instead nothing") {
+		t.Error("000010 down should restore DO INSTEAD NOTHING rules")
+	}
+}
+
 // TestMigrations_EventsAudit_ActorIdOnDeleteRestrict verifies that events_audit.actor_id
 // uses ON DELETE RESTRICT to prevent user deletion when audit entries exist.
 func TestMigrations_EventsAudit_ActorIdOnDeleteRestrict(t *testing.T) {
@@ -737,7 +782,7 @@ func TestMigrations_CheckConstraints(t *testing.T) {
 	checkedColumns := map[string][]string{
 		"000001_create_users_table.up.sql":       {"role"},
 		"000003_create_sessions_tables.up.sql":   {"session_type", "status", "speaker", "cue_type"},
-		"000004_create_health_data_tables.up.sql": {"artifact_type", "category", "status", "priority"},
+		"000004_create_health_data_tables.up.sql": {"category", "status", "priority"},
 		"000006_create_programming_tables.up.sql": {"category", "difficulty", "status", "intensity_level", "session_type", "cue_type", "adjustment_type"},
 	}
 
@@ -1119,18 +1164,34 @@ func TestMigrations_Integration_DownReverses(t *testing.T) {
 		t.Logf("reversed: %s", f)
 	}
 
-	// Verify all tables are gone
+	// Verify all tables are gone (except schema_migrations from migrate tool)
 	var tableCount int
 	err = pool.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM information_schema.tables
 		WHERE table_schema = 'public'
 		  AND table_type = 'BASE TABLE'
+		  AND table_name != 'schema_migrations'
 	`).Scan(&tableCount)
 	if err != nil {
 		t.Fatalf("failed to count tables: %v", err)
 	}
 	if tableCount != 0 {
-		t.Errorf("expected 0 tables after down migrations, got %d", tableCount)
+		// Print which tables remain for debugging
+		rows, _ := pool.Query(ctx, `
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema = 'public'
+			  AND table_type = 'BASE TABLE'
+			  AND table_name != 'schema_migrations'
+		`)
+		var remaining []string
+		for rows.Next() {
+			var name string
+			rows.Scan(&name)
+			remaining = append(remaining, name)
+		}
+		rows.Close()
+		t.Errorf("expected 0 tables after down migrations, got %d: %v", tableCount, remaining)
 	}
 }

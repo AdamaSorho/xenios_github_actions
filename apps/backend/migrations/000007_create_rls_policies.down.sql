@@ -67,9 +67,7 @@ DROP POLICY IF EXISTS insight_cards_coach_access ON insight_cards;
 DROP POLICY IF EXISTS measurements_coach_access ON measurements;
 DROP POLICY IF EXISTS measurements_client_access ON measurements;
 
--- Artifacts
-DROP POLICY IF EXISTS artifacts_coach_access ON artifacts;
-DROP POLICY IF EXISTS artifacts_client_access ON artifacts;
+-- Note: artifacts RLS policies drop moved to migration 000010_create_artifacts_table.down.sql
 
 -- Form cues tracking
 DROP POLICY IF EXISTS form_cues_tracking_access ON form_cues_tracking;

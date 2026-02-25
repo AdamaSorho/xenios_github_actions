@@ -1,0 +1,23 @@
+[
+  {
+    "date": "2024-01-01",
+    "hrv_ms": 40.5,
+    "resting_hr_bpm": 65,
+    "sleep_duration_hrs": 6.8,
+    "steps": 11000
+  },
+  {
+    "date": "2024-01-02",
+    "hrv_ms": 43.2,
+    "resting_hr_bpm": 63,
+    "sleep_duration_hrs": 7.5,
+    "steps": 12500
+  },
+  {
+    "date": "2024-01-03",
+    "hrv_ms": 38.9,
+    "resting_hr_bpm": 66,
+    "sleep_duration_hrs": 7.0,
+    "steps": 9800
+  }
+]

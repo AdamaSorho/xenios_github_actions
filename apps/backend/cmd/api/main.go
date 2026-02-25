@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/parser"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -123,7 +127,7 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 
 		// Job queue endpoints (if database is available)
 		if pool != nil {
-			queueHandler, w := setupJobQueue(pool)
+			queueHandler, w := setupJobQueue(pool, auditRepo)
 			jobWorker = w
 			api.Post("/jobs", queueHandler.EnqueueJob)
 			api.Get("/jobs/status", queueHandler.GetQueueStatus)
@@ -216,7 +220,7 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 }
 
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
-func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+func setupJobQueue(pool *pgxpool.Pool, auditRepo domainrepo.AuditRepository) (*handler.QueueHandler, *worker.Worker) {
 	jobQueue := repository.NewPostgresJobQueue(pool)
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
@@ -224,7 +228,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,18 +236,66 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
 
+	// Register extract_wearable handler with real dependencies
+	measurementRepo := repository.NewPostgresMeasurementRepository(pool)
+	summaryRepo := repository.NewPostgresWearableSummaryRepository(pool)
+	extractUC := usecase.NewExtractWearableUseCase(measurementRepo, summaryRepo, auditRepo)
+	parserRegistry := parser.NewRegistry()
+
+	w.RegisterHandler(entities.JobTypeExtractWearable, newExtractWearableHandler(extractUC, parserRegistry))
+
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// newExtractWearableHandler returns a JobHandler that processes wearable extract jobs.
+func newExtractWearableHandler(extractUC *usecase.ExtractWearableUseCase, registry *parser.Registry) worker.JobHandler {
+	return func(ctx context.Context, job *entities.Job) error {
+		// Parse job payload
+		var payload struct {
+			ClientID string `json:"client_id"`
+			Source   string `json:"source"`
+			Data     string `json:"data"`
+		}
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return fmt.Errorf("unmarshal payload: %w", err)
+		}
+
+		if payload.ClientID == "" {
+			return fmt.Errorf("client_id is required in payload")
+		}
+
+		source := entities.WearableSource(payload.Source)
+		p := registry.ForSource(source)
+		if p == nil {
+			return fmt.Errorf("unsupported wearable source: %s", payload.Source)
+		}
+
+		reader := strings.NewReader(payload.Data)
+		measurements, err := p.Parse(reader, payload.ClientID)
+		if err != nil {
+			return fmt.Errorf("parse wearable data: %w", err)
+		}
+
+		result, err := extractUC.Execute(ctx, payload.ClientID, measurements, source)
+		if err != nil {
+			return fmt.Errorf("extract wearable: %w", err)
+		}
+
+		log.Printf("Wearable import complete: source=%s parsed=%d inserted=%d skipped=%d",
+			result.Source, result.TotalParsed, result.TotalInserted, result.DuplicatesSkipped)
+		return nil
+	}
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

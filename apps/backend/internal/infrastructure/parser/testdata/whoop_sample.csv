@@ -1,0 +1,4 @@
+Cycle start time,Cycle end time,Heart Rate Variability (ms),Resting Heart Rate (bpm),Sleep Performance %,Recovery Score %,Strain,Day Strain
+2024-01-01 06:00:00,2024-01-01 22:00:00,45.2,58,85,72,14.5,14.5
+2024-01-02 06:00:00,2024-01-02 22:00:00,48.1,56,90,78,12.3,12.3
+2024-01-03 06:00:00,2024-01-03 22:00:00,42.0,60,75,65,16.8,16.8

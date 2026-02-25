@@ -273,3 +273,62 @@ func TestRequestUpload_ZeroFileSize_ReturnsValidationError(t *testing.T) {
 		t.Errorf("expected ValidationError, got %T", err)
 	}
 }
+
+func TestRequestUpload_WithValidDocumentSubtype_StoresHint(t *testing.T) {
+	uc, artifactRepo, _, _ := newRequestUploadUseCase()
+
+	out, err := uc.Execute(context.Background(), RequestUploadInput{
+		FileName:        "inbody_scan.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		CoachID:         "coach-1",
+		DocumentSubtype: "inbody_pdf",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	artifact, _ := artifactRepo.FindByID(context.Background(), out.ArtifactID)
+	if artifact.DocumentSubtype != "inbody_pdf" {
+		t.Errorf("expected document_subtype 'inbody_pdf', got %q", artifact.DocumentSubtype)
+	}
+}
+
+func TestRequestUpload_WithInvalidDocumentSubtype_ReturnsValidationError(t *testing.T) {
+	uc, _, _, _ := newRequestUploadUseCase()
+
+	_, err := uc.Execute(context.Background(), RequestUploadInput{
+		FileName:        "report.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		CoachID:         "coach-1",
+		DocumentSubtype: "invalid_type",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !IsValidationError(err) {
+		t.Errorf("expected ValidationError, got %T", err)
+	}
+}
+
+func TestRequestUpload_WithEmptyDocumentSubtype_Succeeds(t *testing.T) {
+	uc, _, _, _ := newRequestUploadUseCase()
+
+	out, err := uc.Execute(context.Background(), RequestUploadInput{
+		FileName:        "report.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		CoachID:         "coach-1",
+		DocumentSubtype: "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.PresignedURL == "" {
+		t.Error("expected non-empty presigned URL")
+	}
+}

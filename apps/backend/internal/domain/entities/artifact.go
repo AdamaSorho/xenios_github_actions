@@ -68,20 +68,91 @@ var AllowedContentTypes = map[string]ArtifactType{
 	"image/png":        ArtifactTypeImage,
 }
 
+// DocumentSubtype classifies the specific kind of document for extraction routing.
+type DocumentSubtype string
+
+const (
+	DocumentSubtypeInBodyPDF    DocumentSubtype = "inbody_pdf"
+	DocumentSubtypeLabCSV       DocumentSubtype = "lab_csv"
+	DocumentSubtypeLabPDF       DocumentSubtype = "lab_pdf"
+	DocumentSubtypeWearableCSV  DocumentSubtype = "wearable_csv"
+	DocumentSubtypeWearableJSON DocumentSubtype = "wearable_json"
+	DocumentSubtypeNutritionCSV DocumentSubtype = "nutrition_csv"
+	DocumentSubtypeAudio        DocumentSubtype = "audio"
+	DocumentSubtypeOther        DocumentSubtype = "other"
+)
+
+// ValidDocumentSubtypes lists all valid document subtypes.
+var ValidDocumentSubtypes = map[DocumentSubtype]bool{
+	DocumentSubtypeInBodyPDF:    true,
+	DocumentSubtypeLabCSV:       true,
+	DocumentSubtypeLabPDF:       true,
+	DocumentSubtypeWearableCSV:  true,
+	DocumentSubtypeWearableJSON: true,
+	DocumentSubtypeNutritionCSV: true,
+	DocumentSubtypeAudio:        true,
+	DocumentSubtypeOther:        true,
+}
+
+// IsValidDocumentSubtype checks if the given subtype is a known document subtype.
+func IsValidDocumentSubtype(ds DocumentSubtype) bool {
+	return ValidDocumentSubtypes[ds]
+}
+
+// ClassifyDocumentSubtype determines the document subtype based on a hint, file extension, and content type.
+// Priority: 1) hint (if valid), 2) extension + content type inference, 3) "other".
+func ClassifyDocumentSubtype(hint DocumentSubtype, fileName string, contentType string) DocumentSubtype {
+	if hint != "" && IsValidDocumentSubtype(hint) {
+		return hint
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+
+	// Audio files
+	if artType, ok := AllowedFileExtensions[ext]; ok && artType == ArtifactTypeAudio {
+		return DocumentSubtypeAudio
+	}
+	if strings.HasPrefix(ct, "audio/") {
+		return DocumentSubtypeAudio
+	}
+
+	return DocumentSubtypeOther
+}
+
+// DocumentSubtypeToJobType maps a document subtype to the appropriate extraction job type.
+func DocumentSubtypeToJobType(ds DocumentSubtype) JobType {
+	switch ds {
+	case DocumentSubtypeInBodyPDF:
+		return JobTypeExtractInBody
+	case DocumentSubtypeLabCSV, DocumentSubtypeLabPDF:
+		return JobTypeExtractLabResults
+	case DocumentSubtypeWearableCSV, DocumentSubtypeWearableJSON:
+		return JobTypeExtractWearable
+	case DocumentSubtypeNutritionCSV:
+		return JobTypeExtractNutrition
+	case DocumentSubtypeAudio:
+		return JobTypeTranscribeAudio
+	default:
+		return JobTypeClassifyDocument
+	}
+}
+
 // Artifact represents a file stored in the object storage system.
 type Artifact struct {
-	ID          string         `json:"id"`
-	ClientID    string         `json:"client_id"`
-	CoachID     string         `json:"coach_id"`
-	FileName    string         `json:"file_name"`
-	FileType    string         `json:"file_type"`
-	FileSize    int64          `json:"file_size"`
-	StorageKey  string         `json:"storage_key"`
-	Type        ArtifactType   `json:"type"`
-	Status      ArtifactStatus `json:"status"`
-	ContentType string         `json:"content_type"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID              string          `json:"id"`
+	ClientID        string          `json:"client_id"`
+	CoachID         string          `json:"coach_id"`
+	FileName        string          `json:"file_name"`
+	FileType        string          `json:"file_type"`
+	FileSize        int64           `json:"file_size"`
+	StorageKey      string          `json:"storage_key"`
+	Type            ArtifactType    `json:"type"`
+	Status          ArtifactStatus  `json:"status"`
+	ContentType     string          `json:"content_type"`
+	DocumentSubtype DocumentSubtype `json:"document_subtype,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // ValidateFileExtension checks if the file extension is allowed and returns the artifact type.

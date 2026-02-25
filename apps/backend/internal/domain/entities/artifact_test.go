@@ -230,3 +230,186 @@ func TestAllowedFileExtensions_AllTypesPresent(t *testing.T) {
 		}
 	}
 }
+
+// --- DocumentSubtype tests ---
+
+func TestDocumentSubtypeConstants_CorrectValues(t *testing.T) {
+	tests := []struct {
+		subtype  DocumentSubtype
+		expected string
+	}{
+		{DocumentSubtypeInBodyPDF, "inbody_pdf"},
+		{DocumentSubtypeLabCSV, "lab_csv"},
+		{DocumentSubtypeLabPDF, "lab_pdf"},
+		{DocumentSubtypeWearableCSV, "wearable_csv"},
+		{DocumentSubtypeWearableJSON, "wearable_json"},
+		{DocumentSubtypeNutritionCSV, "nutrition_csv"},
+		{DocumentSubtypeAudio, "audio"},
+		{DocumentSubtypeOther, "other"},
+	}
+	for _, tc := range tests {
+		if string(tc.subtype) != tc.expected {
+			t.Errorf("expected %q, got %q", tc.expected, tc.subtype)
+		}
+	}
+}
+
+func TestIsValidDocumentSubtype_ValidSubtypes_ReturnsTrue(t *testing.T) {
+	valid := []DocumentSubtype{
+		DocumentSubtypeInBodyPDF, DocumentSubtypeLabCSV, DocumentSubtypeLabPDF,
+		DocumentSubtypeWearableCSV, DocumentSubtypeWearableJSON,
+		DocumentSubtypeNutritionCSV, DocumentSubtypeAudio, DocumentSubtypeOther,
+	}
+	for _, ds := range valid {
+		if !IsValidDocumentSubtype(ds) {
+			t.Errorf("expected %q to be valid", ds)
+		}
+	}
+}
+
+func TestIsValidDocumentSubtype_InvalidSubtype_ReturnsFalse(t *testing.T) {
+	if IsValidDocumentSubtype("unknown_type") {
+		t.Error("expected 'unknown_type' to be invalid")
+	}
+	if IsValidDocumentSubtype("") {
+		t.Error("expected empty string to be invalid")
+	}
+}
+
+func TestClassifyDocumentSubtype_ValidHint_ReturnsHint(t *testing.T) {
+	result := ClassifyDocumentSubtype(DocumentSubtypeInBodyPDF, "scan.pdf", "application/pdf")
+	if result != DocumentSubtypeInBodyPDF {
+		t.Errorf("expected %q, got %q", DocumentSubtypeInBodyPDF, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_HintOverridesExtension(t *testing.T) {
+	result := ClassifyDocumentSubtype(DocumentSubtypeLabCSV, "data.csv", "text/csv")
+	if result != DocumentSubtypeLabCSV {
+		t.Errorf("expected hint %q to take precedence, got %q", DocumentSubtypeLabCSV, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_InvalidHint_FallsBackToExtension(t *testing.T) {
+	result := ClassifyDocumentSubtype("invalid_hint", "recording.mp3", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %q, got %q", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_EmptyHint_FallsBackToExtension(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "session.wav", "audio/wav")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %q, got %q", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_AudioExtension_ReturnsAudio(t *testing.T) {
+	tests := []struct {
+		fileName    string
+		contentType string
+	}{
+		{"recording.mp3", "audio/mpeg"},
+		{"session.wav", "audio/wav"},
+		{"voice.aac", "audio/aac"},
+	}
+	for _, tc := range tests {
+		result := ClassifyDocumentSubtype("", tc.fileName, tc.contentType)
+		if result != DocumentSubtypeAudio {
+			t.Errorf("for %s: expected %q, got %q", tc.fileName, DocumentSubtypeAudio, result)
+		}
+	}
+}
+
+func TestClassifyDocumentSubtype_AudioContentType_ReturnsAudio(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "unknown.bin", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %q, got %q", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_PDF_NoHint_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "report.pdf", "application/pdf")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_CSV_NoHint_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "data.csv", "text/csv")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_JSON_NoHint_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "export.json", "application/json")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocumentSubtype_UnknownFile_ReturnsOther(t *testing.T) {
+	result := ClassifyDocumentSubtype("", "file.xml", "application/xml")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+// --- DocumentSubtypeToJobType tests ---
+
+func TestDocumentSubtypeToJobType_InBodyPDF_ReturnsExtractInBody(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeInBodyPDF)
+	if jt != JobTypeExtractInBody {
+		t.Errorf("expected %q, got %q", JobTypeExtractInBody, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_LabCSV_ReturnsExtractLabResults(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeLabCSV)
+	if jt != JobTypeExtractLabResults {
+		t.Errorf("expected %q, got %q", JobTypeExtractLabResults, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_LabPDF_ReturnsExtractLabResults(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeLabPDF)
+	if jt != JobTypeExtractLabResults {
+		t.Errorf("expected %q, got %q", JobTypeExtractLabResults, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_WearableCSV_ReturnsExtractWearable(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeWearableCSV)
+	if jt != JobTypeExtractWearable {
+		t.Errorf("expected %q, got %q", JobTypeExtractWearable, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_WearableJSON_ReturnsExtractWearable(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeWearableJSON)
+	if jt != JobTypeExtractWearable {
+		t.Errorf("expected %q, got %q", JobTypeExtractWearable, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_NutritionCSV_ReturnsExtractNutrition(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeNutritionCSV)
+	if jt != JobTypeExtractNutrition {
+		t.Errorf("expected %q, got %q", JobTypeExtractNutrition, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_Audio_ReturnsTranscribeAudio(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeAudio)
+	if jt != JobTypeTranscribeAudio {
+		t.Errorf("expected %q, got %q", JobTypeTranscribeAudio, jt)
+	}
+}
+
+func TestDocumentSubtypeToJobType_Other_ReturnsClassifyDocument(t *testing.T) {
+	jt := DocumentSubtypeToJobType(DocumentSubtypeOther)
+	if jt != JobTypeClassifyDocument {
+		t.Errorf("expected %q, got %q", JobTypeClassifyDocument, jt)
+	}
+}

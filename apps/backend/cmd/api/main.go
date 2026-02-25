@@ -224,7 +224,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,12 +232,15 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
+
+	// Register extract_inbody handler with real dependencies
+	registerInBodyHandler(w)
 
 	ctx := context.Background()
 	w.Start(ctx)
@@ -266,6 +269,29 @@ func getPort() string {
 		port = "8080"
 	}
 	return port
+}
+
+// registerInBodyHandler wires up the InBody PDF extraction handler with in-memory dependencies.
+func registerInBodyHandler(w *worker.Worker) {
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	fileDownloader := repository.NewInMemoryFileDownloader()
+	auditRepo := repository.NewInMemoryAuditRepository()
+
+	// Use a plain-text extractor for MVP; in production this would use a real PDF parser.
+	textExtractor := func(pdfBytes []byte) (string, error) {
+		return string(pdfBytes), nil
+	}
+	pdfExtractor := repository.NewInBodyTextExtractor(textExtractor)
+
+	extractUC := usecase.NewExtractInBodyUseCase(artifactRepo, measurementRepo, fileDownloader, pdfExtractor, auditRepo)
+
+	w.RegisterHandler(entities.JobTypeExtractInBody, func(ctx context.Context, job *entities.Job) error {
+		_, err := extractUC.Execute(ctx, job)
+		return err
+	})
+
+	log.Println("Registered extract_inbody job handler")
 }
 
 // runServer starts the server and handles graceful shutdown

@@ -32,6 +32,9 @@ var ValidAuditActions = map[string]bool{
 	"auth.logout":       true,
 	"auth.token_refreshed":       true,
 	"auth.token_replay_detected": true,
+	"extraction.inbody_success":  true,
+	"extraction.inbody_partial":  true,
+	"extraction.inbody_failed":   true,
 }
 
 // IsValidAuditAction checks if an action string is a known audit action.

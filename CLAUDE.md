@@ -193,6 +193,39 @@ Before specifying ANY version of a package, framework, or runtime:
 4. Verify no layer violations introduced
 5. Run full test suite before committing
 
+## Pre-PR Validation (MANDATORY)
+
+**NEVER open a PR without running this script first.**
+
+```bash
+./scripts/pre-pr-check.sh
+```
+
+This mirrors the exact checks CI runs. The script:
+- Detects which apps you changed (auto) or accepts `--backend`, `--web`, `--mobile`, `--all`
+- Runs compilation, Clean Architecture checks, tests, and coverage threshold (≥80%)
+- Exits non-zero if ANY check fails
+
+**The PR description MUST include the script output showing 0 failures.**
+
+If the script fails:
+- Fix the issue locally
+- Re-run the script
+- Only open the PR when output shows: `✓ All checks passed — safe to open PR`
+
+## Spec Template (MANDATORY)
+
+Every spec MUST follow the template at `docs/spec-template.md`.
+
+**Required sections** (Architect rejects specs missing these):
+- Summary
+- Goals
+- Sequence Diagram (Mermaid)
+- Architecture (layer breakdown + compliance checklist)
+- Test Requirements (list every test before writing code)
+- Acceptance Criteria (each criterion maps to a test)
+- Pre-PR Validation (confirm script will pass)
+
 ## Database Migrations (MANDATORY)
 
 ### Migration File Structure

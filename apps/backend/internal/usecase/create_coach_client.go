@@ -48,3 +48,18 @@ func IsValidationError(err error) bool {
 	var ve *ValidationError
 	return errors.As(err, &ve)
 }
+
+// AuthorizationError represents an authorization failure in the use case layer.
+type AuthorizationError struct {
+	Message string
+}
+
+func (e *AuthorizationError) Error() string {
+	return e.Message
+}
+
+// IsAuthorizationError checks whether the given error is an AuthorizationError.
+func IsAuthorizationError(err error) bool {
+	var ae *AuthorizationError
+	return errors.As(err, &ae)
+}

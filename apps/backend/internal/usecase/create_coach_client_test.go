@@ -9,8 +9,9 @@ import (
 )
 
 type mockCoachClientRepo struct {
-	createFunc func(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error)
-	listFunc   func(ctx context.Context, coachID string, limit, offset int) ([]*entities.CoachClient, error)
+	createFunc          func(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error)
+	listFunc            func(ctx context.Context, coachID string, limit, offset int) ([]*entities.CoachClient, error)
+	findByCoachAndClient func(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error)
 }
 
 func (m *mockCoachClientRepo) Create(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error) {
@@ -25,6 +26,13 @@ func (m *mockCoachClientRepo) ListByCoachID(ctx context.Context, coachID string,
 		return m.listFunc(ctx, coachID, limit, offset)
 	}
 	return []*entities.CoachClient{}, nil
+}
+
+func (m *mockCoachClientRepo) FindByCoachAndClient(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error) {
+	if m.findByCoachAndClient != nil {
+		return m.findByCoachAndClient(ctx, coachID, clientID)
+	}
+	return &entities.CoachClient{ID: "rel-1", CoachID: coachID, ClientID: clientID}, nil
 }
 
 func TestCreateCoachClient_Success(t *testing.T) {

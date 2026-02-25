@@ -1,5 +1,6 @@
 const PROTECTED_PREFIXES = [
   '/dashboard',
+  '/insights',
   '/clients',
   '/sessions',
   '/analytics',

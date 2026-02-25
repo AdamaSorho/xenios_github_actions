@@ -69,6 +69,7 @@ describe('Sidebar', () => {
     renderSidebar()
 
     expect(screen.getByTestId('nav-dashboard')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-insights')).toBeInTheDocument()
     expect(screen.getByTestId('nav-clients')).toBeInTheDocument()
     expect(screen.getByTestId('nav-sessions')).toBeInTheDocument()
     expect(screen.getByTestId('nav-analytics')).toBeInTheDocument()

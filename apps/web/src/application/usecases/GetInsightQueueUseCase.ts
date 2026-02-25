@@ -1,0 +1,10 @@
+import { InsightQueueResponse, InsightStatus } from '@/domain/entities/InsightCard'
+import { InsightRepository } from '@/domain/repositories/InsightRepository'
+
+export class GetInsightQueueUseCase {
+  constructor(private readonly insightRepo: InsightRepository) {}
+
+  async execute(status?: InsightStatus, limit?: number, offset?: number): Promise<InsightQueueResponse> {
+    return this.insightRepo.getQueue(status, limit, offset)
+  }
+}

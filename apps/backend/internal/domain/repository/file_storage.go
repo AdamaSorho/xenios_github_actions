@@ -16,4 +16,5 @@ type FileStorageRepository interface {
 	GenerateUploadURL(ctx context.Context, key string, contentType string, expiry time.Duration) (*PresignedURL, error)
 	GenerateDownloadURL(ctx context.Context, key string, expiry time.Duration) (*PresignedURL, error)
 	ObjectExists(ctx context.Context, key string) (bool, error)
+	DownloadObject(ctx context.Context, key string) ([]byte, error)
 }

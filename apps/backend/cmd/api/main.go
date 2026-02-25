@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	nutritionpkg "github.com/xenios/backend/internal/infrastructure/nutrition"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -239,6 +241,15 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		})
 	}
 
+	// Register extract_nutrition job handler
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	fileStorage := repository.NewInMemoryFileStorage()
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	nutritionParser := nutritionpkg.NewCSVNutritionParser()
+	extractNutritionUC := usecase.NewExtractNutritionUseCase(artifactRepo, fileStorage, measurementRepo, auditRepo, nutritionParser)
+	w.RegisterHandler(entities.JobTypeExtractNutrition, newExtractNutritionHandler(extractNutritionUC))
+
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
@@ -266,6 +277,27 @@ func getPort() string {
 		port = "8080"
 	}
 	return port
+}
+
+// extractNutritionPayload is the expected JSON payload for extract_nutrition jobs.
+type extractNutritionPayload struct {
+	ArtifactID string `json:"artifact_id"`
+	CoachID    string `json:"coach_id"`
+}
+
+// newExtractNutritionHandler creates a worker.JobHandler for extract_nutrition jobs.
+func newExtractNutritionHandler(uc *usecase.ExtractNutritionUseCase) worker.JobHandler {
+	return func(ctx context.Context, job *entities.Job) error {
+		var payload extractNutritionPayload
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return err
+		}
+		_, err := uc.Execute(ctx, usecase.ExtractNutritionInput{
+			ArtifactID: payload.ArtifactID,
+			CoachID:    payload.CoachID,
+		})
+		return err
+	}
 }
 
 // runServer starts the server and handles graceful shutdown

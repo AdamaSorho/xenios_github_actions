@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xenios/backend/internal/adapter/handler"
+	"github.com/xenios/backend/internal/adapter/repository"
 	"github.com/xenios/backend/internal/infrastructure/config"
 )
 
@@ -399,7 +400,8 @@ func TestSetupJobQueue_ReturnsHandlerAndWorker(t *testing.T) {
 	}
 	defer pool.Close()
 
-	queueHandler, w := setupJobQueue(pool)
+	auditRepo := repository.NewInMemoryAuditRepository()
+	queueHandler, w := setupJobQueue(pool, auditRepo)
 
 	if queueHandler == nil {
 		t.Error("expected non-nil QueueHandler")
@@ -422,7 +424,8 @@ func TestSetupJobQueue_RegistersAllJobTypes(t *testing.T) {
 	}
 	defer pool.Close()
 
-	_, w := setupJobQueue(pool)
+	auditRepo := repository.NewInMemoryAuditRepository()
+	_, w := setupJobQueue(pool, auditRepo)
 	defer w.Stop()
 
 	types := w.RegisteredJobTypes()
@@ -439,7 +442,8 @@ func TestSetupJobQueue_WorkerCanBeStopped(t *testing.T) {
 	}
 	defer pool.Close()
 
-	_, w := setupJobQueue(pool)
+	auditRepo := repository.NewInMemoryAuditRepository()
+	_, w := setupJobQueue(pool, auditRepo)
 	if !w.IsRunning() {
 		t.Error("expected worker to be running")
 	}

@@ -123,7 +123,7 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 
 		// Job queue endpoints (if database is available)
 		if pool != nil {
-			queueHandler, w := setupJobQueue(pool)
+			queueHandler, w := setupJobQueue(pool, auditRepo)
 			jobWorker = w
 			api.Post("/jobs", queueHandler.EnqueueJob)
 			api.Get("/jobs/status", queueHandler.GetQueueStatus)
@@ -216,7 +216,7 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 }
 
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
-func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+func setupJobQueue(pool *pgxpool.Pool, auditRepo domainrepo.AuditRepository) (*handler.QueueHandler, *worker.Worker) {
 	jobQueue := repository.NewPostgresJobQueue(pool)
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
@@ -224,24 +224,31 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	// Register placeholder handlers for job types without real implementations yet
+	placeholderTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
-		entities.JobTypeInsightGeneration,
 		entities.JobTypeAnalyticsAggregation,
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
 
+	// Register insight generation handler with real use case
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+	measureRepo := repository.NewInMemoryMeasurementRepository()
+	wearableRepo := repository.NewInMemoryWearableSummaryRepository()
+	generateInsightsUC := usecase.NewGenerateInsightsUseCase(insightRepo, measureRepo, wearableRepo, auditRepo)
+	w.RegisterHandler(entities.JobTypeInsightGeneration, worker.NewInsightGenerationHandler(generateInsightsUC))
+
 	ctx := context.Background()
 	w.Start(ctx)
-	log.Println("Job worker started with handlers for all job types")
+	log.Println("Job worker started with handlers for all job types (insight_generation uses real handler)")
 
 	return queueHandler, w
 }

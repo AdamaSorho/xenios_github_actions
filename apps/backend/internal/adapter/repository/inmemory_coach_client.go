@@ -63,6 +63,19 @@ func (r *InMemoryCoachClientRepository) ListByCoachID(_ context.Context, coachID
 	return filtered[offset:end], nil
 }
 
+// FindByCoachAndClient checks if a coach-client relationship exists.
+func (r *InMemoryCoachClientRepository) FindByCoachAndClient(_ context.Context, coachID, clientID string) (*entities.CoachClient, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, rec := range r.records {
+		if rec.CoachID == coachID && rec.ClientID == clientID {
+			return rec, nil
+		}
+	}
+	return nil, nil
+}
+
 func generateRepoID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

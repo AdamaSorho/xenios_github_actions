@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { InsightCard } from '@/domain/entities/InsightCard'
 
 interface InsightCardItemProps {
@@ -33,43 +33,27 @@ export function InsightCardItem({ insight, onApprove, onDismiss, onEdit, onShare
   const [editBody, setEditBody] = useState(insight.body)
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleApprove = async () => {
-    setIsLoading(true)
-    try {
-      await onApprove(insight.id)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const withLoading = useCallback(
+    (fn: () => Promise<void>) => async () => {
+      setIsLoading(true)
+      try {
+        await fn()
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    []
+  )
 
-  const handleDismiss = async () => {
-    setIsLoading(true)
-    try {
-      await onDismiss(insight.id)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSave = async () => {
-    setIsLoading(true)
-    try {
-      await onEdit(insight.id, editTitle, editBody)
-      setIsEditing(false)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleShare = async () => {
-    if (!onShare) return
-    setIsLoading(true)
-    try {
-      await onShare(insight.id)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const handleApprove = withLoading(() => onApprove(insight.id))
+  const handleDismiss = withLoading(() => onDismiss(insight.id))
+  const handleShare = withLoading(async () => {
+    if (onShare) await onShare(insight.id)
+  })
+  const handleSave = withLoading(async () => {
+    await onEdit(insight.id, editTitle, editBody)
+    setIsEditing(false)
+  })
 
   const handleCancel = () => {
     setEditTitle(insight.title)

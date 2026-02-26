@@ -1,5 +1,6 @@
 import { ApiInsightRepository } from '@/infrastructure/repositories/ApiInsightRepository'
 import { apiClient } from '@xenios/api-client'
+import { mockInsight, mockQueueResponse } from '../helpers/insightFixtures'
 
 jest.mock('@xenios/api-client', () => ({
   apiClient: {
@@ -13,23 +14,8 @@ jest.mock('@xenios/api-client', () => ({
 
 const mockedApiClient = jest.mocked(apiClient)
 
-const mockInsight = {
-  id: 'insight-1',
-  coachId: 'coach-1',
-  clientId: 'client-1',
-  title: 'Test Insight',
-  body: 'Test body',
-  category: 'nutrition',
-  status: 'draft',
-  priority: 'high',
-  createdAt: '2026-02-15T10:00:00Z',
-  updatedAt: '2026-02-15T10:00:00Z',
-}
-
-const mockQueueResponse = {
-  insights: [mockInsight],
-  pagination: { page: 1, limit: 20, total: 1 },
-}
+const okResponse = <T>(data: T) => ({ data, error: null, ok: true })
+const errorResponse = (error: string) => ({ data: null, error, ok: false })
 
 describe('ApiInsightRepository', () => {
   let repo: ApiInsightRepository
@@ -41,11 +27,7 @@ describe('ApiInsightRepository', () => {
 
   describe('getQueue', () => {
     test('getQueue_NoParams_FetchesDefaultQueue', async () => {
-      mockedApiClient.get.mockResolvedValue({
-        data: mockQueueResponse,
-        error: null,
-        ok: true,
-      })
+      mockedApiClient.get.mockResolvedValue(okResponse(mockQueueResponse))
 
       const result = await repo.getQueue()
       expect(result).toEqual(mockQueueResponse)
@@ -53,11 +35,7 @@ describe('ApiInsightRepository', () => {
     })
 
     test('getQueue_WithParams_IncludesQueryString', async () => {
-      mockedApiClient.get.mockResolvedValue({
-        data: mockQueueResponse,
-        error: null,
-        ok: true,
-      })
+      mockedApiClient.get.mockResolvedValue(okResponse(mockQueueResponse))
 
       await repo.getQueue('draft', 10, 5)
       expect(mockedApiClient.get).toHaveBeenCalledWith(
@@ -66,23 +44,14 @@ describe('ApiInsightRepository', () => {
     })
 
     test('getQueue_ApiError_ThrowsError', async () => {
-      mockedApiClient.get.mockResolvedValue({
-        data: null,
-        error: 'Unauthorized',
-        ok: false,
-      })
-
+      mockedApiClient.get.mockResolvedValue(errorResponse('Unauthorized'))
       await expect(repo.getQueue()).rejects.toThrow('Unauthorized')
     })
   })
 
   describe('getClientInsights', () => {
     test('getClientInsights_ValidClientId_FetchesInsights', async () => {
-      mockedApiClient.get.mockResolvedValue({
-        data: mockQueueResponse,
-        error: null,
-        ok: true,
-      })
+      mockedApiClient.get.mockResolvedValue(okResponse(mockQueueResponse))
 
       const result = await repo.getClientInsights('client-1')
       expect(result).toEqual(mockQueueResponse)
@@ -90,11 +59,7 @@ describe('ApiInsightRepository', () => {
     })
 
     test('getClientInsights_WithStatusFilter_IncludesQueryString', async () => {
-      mockedApiClient.get.mockResolvedValue({
-        data: mockQueueResponse,
-        error: null,
-        ok: true,
-      })
+      mockedApiClient.get.mockResolvedValue(okResponse(mockQueueResponse))
 
       await repo.getClientInsights('client-1', 'approved')
       expect(mockedApiClient.get).toHaveBeenCalledWith(
@@ -103,75 +68,37 @@ describe('ApiInsightRepository', () => {
     })
   })
 
-  describe('approve', () => {
-    test('approve_ValidId_ReturnsApprovedInsight', async () => {
-      const approved = { ...mockInsight, status: 'approved' }
-      mockedApiClient.put.mockResolvedValue({
-        data: approved,
-        error: null,
-        ok: true,
-      })
+  // Table-driven tests for mutation methods (approve, dismiss, share)
+  describe.each([
+    { method: 'approve' as const, status: 'approved', endpoint: '/v1/insights/insight-1/approve' },
+    { method: 'dismiss' as const, status: 'dismissed', endpoint: '/v1/insights/insight-1/dismiss' },
+    { method: 'share' as const, status: 'shared', endpoint: '/v1/insights/insight-1/share' },
+  ])('$method', ({ method, status, endpoint }) => {
+    test(`${method}_ValidId_ReturnsUpdatedInsight`, async () => {
+      const result = { ...mockInsight, status }
+      mockedApiClient.put.mockResolvedValue(okResponse(result))
 
-      const result = await repo.approve('insight-1')
-      expect(result.status).toBe('approved')
-      expect(mockedApiClient.put).toHaveBeenCalledWith('/v1/insights/insight-1/approve')
-    })
-
-    test('approve_ApiError_ThrowsError', async () => {
-      mockedApiClient.put.mockResolvedValue({
-        data: null,
-        error: 'Invalid transition',
-        ok: false,
-      })
-
-      await expect(repo.approve('insight-1')).rejects.toThrow('Invalid transition')
+      const card = await repo[method]('insight-1')
+      expect(card.status).toBe(status)
+      expect(mockedApiClient.put).toHaveBeenCalledWith(endpoint)
     })
   })
 
-  describe('dismiss', () => {
-    test('dismiss_ValidId_ReturnsDismissedInsight', async () => {
-      const dismissed = { ...mockInsight, status: 'dismissed' }
-      mockedApiClient.put.mockResolvedValue({
-        data: dismissed,
-        error: null,
-        ok: true,
-      })
-
-      const result = await repo.dismiss('insight-1')
-      expect(result.status).toBe('dismissed')
-      expect(mockedApiClient.put).toHaveBeenCalledWith('/v1/insights/insight-1/dismiss')
-    })
+  test('approve_ApiError_ThrowsError', async () => {
+    mockedApiClient.put.mockResolvedValue(errorResponse('Invalid transition'))
+    await expect(repo.approve('insight-1')).rejects.toThrow('Invalid transition')
   })
 
   describe('edit', () => {
     test('edit_ValidInput_ReturnsUpdatedInsight', async () => {
       const updated = { ...mockInsight, title: 'Updated Title' }
-      mockedApiClient.put.mockResolvedValue({
-        data: updated,
-        error: null,
-        ok: true,
-      })
+      mockedApiClient.put.mockResolvedValue(okResponse(updated))
 
       const result = await repo.edit('insight-1', { title: 'Updated Title' })
       expect(result.title).toBe('Updated Title')
       expect(mockedApiClient.put).toHaveBeenCalledWith('/v1/insights/insight-1', {
         title: 'Updated Title',
       })
-    })
-  })
-
-  describe('share', () => {
-    test('share_ValidId_ReturnsSharedInsight', async () => {
-      const shared = { ...mockInsight, status: 'shared' }
-      mockedApiClient.put.mockResolvedValue({
-        data: shared,
-        error: null,
-        ok: true,
-      })
-
-      const result = await repo.share('insight-1')
-      expect(result.status).toBe('shared')
-      expect(mockedApiClient.put).toHaveBeenCalledWith('/v1/insights/insight-1/share')
     })
   })
 })

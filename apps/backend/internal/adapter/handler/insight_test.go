@@ -34,70 +34,40 @@ func (m *mockGetClientInsightsUC) Execute(_ context.Context, _ usecase.GetClient
 	return m.output, m.err
 }
 
-type mockApproveInsightUC struct {
+// mockInsightActionUC is a generic mock for single-insight action use cases.
+type mockInsightActionUC[T any] struct {
 	card *entities.InsightCard
 	err  error
 }
 
-func (m *mockApproveInsightUC) Execute(_ context.Context, _ usecase.ApproveInsightInput) (*entities.InsightCard, error) {
+func (m *mockInsightActionUC[T]) Execute(_ context.Context, _ T) (*entities.InsightCard, error) {
 	return m.card, m.err
 }
 
-type mockDismissInsightUC struct {
-	card *entities.InsightCard
-	err  error
-}
-
-func (m *mockDismissInsightUC) Execute(_ context.Context, _ usecase.DismissInsightInput) (*entities.InsightCard, error) {
-	return m.card, m.err
-}
-
-type mockEditInsightUC struct {
-	card *entities.InsightCard
-	err  error
-}
-
-func (m *mockEditInsightUC) Execute(_ context.Context, _ usecase.EditInsightInput) (*entities.InsightCard, error) {
-	return m.card, m.err
-}
-
-type mockShareInsightUC struct {
-	card *entities.InsightCard
-	err  error
-}
-
-func (m *mockShareInsightUC) Execute(_ context.Context, _ usecase.ShareInsightInput) (*entities.InsightCard, error) {
-	return m.card, m.err
+// emptyListOutput returns a default empty list output for mock setup.
+func emptyListOutput() *usecase.InsightListOutput {
+	return &usecase.InsightListOutput{
+		Insights: []*entities.InsightCard{},
+		Total:    0,
+		Limit:    20,
+		Offset:   0,
+	}
 }
 
 func defaultInsightHandler() *InsightHandler {
 	return NewInsightHandler(
-		&mockGetInsightQueueUC{
-			output: &usecase.GetInsightQueueOutput{
-				Insights: []*entities.InsightCard{},
-				Total:    0,
-				Limit:    20,
-				Offset:   0,
-			},
-		},
-		&mockGetClientInsightsUC{
-			output: &usecase.GetClientInsightsOutput{
-				Insights: []*entities.InsightCard{},
-				Total:    0,
-				Limit:    20,
-				Offset:   0,
-			},
-		},
-		&mockApproveInsightUC{
+		&mockGetInsightQueueUC{output: emptyListOutput()},
+		&mockGetClientInsightsUC{output: emptyListOutput()},
+		&mockInsightActionUC[usecase.ApproveInsightInput]{
 			card: &entities.InsightCard{ID: "i1", Status: entities.InsightStatusApproved},
 		},
-		&mockDismissInsightUC{
+		&mockInsightActionUC[usecase.DismissInsightInput]{
 			card: &entities.InsightCard{ID: "i1", Status: entities.InsightStatusDismissed},
 		},
-		&mockEditInsightUC{
+		&mockInsightActionUC[usecase.EditInsightInput]{
 			card: &entities.InsightCard{ID: "i1", Title: "Updated"},
 		},
-		&mockShareInsightUC{
+		&mockInsightActionUC[usecase.ShareInsightInput]{
 			card: &entities.InsightCard{ID: "i1", Status: entities.InsightStatusShared},
 		},
 	)
@@ -212,34 +182,62 @@ func TestInsightHandler_GetClientInsights_Unauthenticated(t *testing.T) {
 	}
 }
 
-// --- Approve Tests ---
+// --- Action Handler Tests (table-driven for approve, dismiss, share) ---
 
-func TestInsightHandler_Approve_Success(t *testing.T) {
+func TestInsightHandler_Actions_Unauthenticated_Returns401(t *testing.T) {
 	h := defaultInsightHandler()
 
-	r := chi.NewRouter()
-	r.Put("/api/v1/insights/{insightID}/approve", h.Approve)
+	actions := []struct {
+		name   string
+		method string
+		path   string
+		handle http.HandlerFunc
+	}{
+		{"Approve", "PUT", "/api/v1/insights/i1/approve", h.Approve},
+		{"Dismiss", "PUT", "/api/v1/insights/i1/dismiss", h.Dismiss},
+		{"Share", "PUT", "/api/v1/insights/i1/share", h.Share},
+	}
 
-	req := httptest.NewRequest("PUT", "/api/v1/insights/i1/approve", nil)
-	req = req.WithContext(coachCtx(req.Context()))
-	rec := httptest.NewRecorder()
-
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	for _, a := range actions {
+		t.Run(a.name, func(t *testing.T) {
+			req := httptest.NewRequest(a.method, a.path, nil)
+			rec := httptest.NewRecorder()
+			a.handle(rec, req)
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401, got %d", rec.Code)
+			}
+		})
 	}
 }
 
-func TestInsightHandler_Approve_Unauthenticated(t *testing.T) {
+func TestInsightHandler_Actions_Success(t *testing.T) {
 	h := defaultInsightHandler()
-	req := httptest.NewRequest("PUT", "/api/v1/insights/i1/approve", nil)
-	rec := httptest.NewRecorder()
 
-	h.Approve(rec, req)
+	actions := []struct {
+		name    string
+		path    string
+		handler http.HandlerFunc
+	}{
+		{"Approve", "/api/v1/insights/{insightID}/approve", h.Approve},
+		{"Dismiss", "/api/v1/insights/{insightID}/dismiss", h.Dismiss},
+		{"Share", "/api/v1/insights/{insightID}/share", h.Share},
+	}
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401, got %d", rec.Code)
+	for _, a := range actions {
+		t.Run(a.name, func(t *testing.T) {
+			r := chi.NewRouter()
+			r.Put(a.path, a.handler)
+
+			req := httptest.NewRequest("PUT", "/api/v1/insights/i1"+a.path[len("/api/v1/insights/{insightID}"):], nil)
+			req = req.WithContext(coachCtx(req.Context()))
+			rec := httptest.NewRecorder()
+
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("expected 200, got %d", rec.Code)
+			}
+		})
 	}
 }
 
@@ -247,10 +245,10 @@ func TestInsightHandler_Approve_AuthorizationError_Returns403(t *testing.T) {
 	h := NewInsightHandler(
 		&mockGetInsightQueueUC{},
 		&mockGetClientInsightsUC{},
-		&mockApproveInsightUC{err: &usecase.AuthorizationError{Message: "forbidden"}},
-		&mockDismissInsightUC{},
-		&mockEditInsightUC{},
-		&mockShareInsightUC{},
+		&mockInsightActionUC[usecase.ApproveInsightInput]{err: &usecase.AuthorizationError{Message: "forbidden"}},
+		&mockInsightActionUC[usecase.DismissInsightInput]{},
+		&mockInsightActionUC[usecase.EditInsightInput]{},
+		&mockInsightActionUC[usecase.ShareInsightInput]{},
 	)
 
 	r := chi.NewRouter()
@@ -271,10 +269,10 @@ func TestInsightHandler_Approve_InvalidTransition_Returns422(t *testing.T) {
 	h := NewInsightHandler(
 		&mockGetInsightQueueUC{},
 		&mockGetClientInsightsUC{},
-		&mockApproveInsightUC{err: &entities.StatusTransitionError{From: "dismissed", To: "approved"}},
-		&mockDismissInsightUC{},
-		&mockEditInsightUC{},
-		&mockShareInsightUC{},
+		&mockInsightActionUC[usecase.ApproveInsightInput]{err: &entities.StatusTransitionError{From: "dismissed", To: "approved"}},
+		&mockInsightActionUC[usecase.DismissInsightInput]{},
+		&mockInsightActionUC[usecase.EditInsightInput]{},
+		&mockInsightActionUC[usecase.ShareInsightInput]{},
 	)
 
 	r := chi.NewRouter()
@@ -288,25 +286,6 @@ func TestInsightHandler_Approve_InvalidTransition_Returns422(t *testing.T) {
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("expected status 422, got %d", rec.Code)
-	}
-}
-
-// --- Dismiss Tests ---
-
-func TestInsightHandler_Dismiss_Success(t *testing.T) {
-	h := defaultInsightHandler()
-
-	r := chi.NewRouter()
-	r.Put("/api/v1/insights/{insightID}/dismiss", h.Dismiss)
-
-	req := httptest.NewRequest("PUT", "/api/v1/insights/i1/dismiss", nil)
-	req = req.WithContext(coachCtx(req.Context()))
-	rec := httptest.NewRecorder()
-
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
 	}
 }
 
@@ -348,59 +327,26 @@ func TestInsightHandler_Edit_InvalidJSON_Returns400(t *testing.T) {
 	}
 }
 
-// --- Share Tests ---
-
-func TestInsightHandler_Share_Success(t *testing.T) {
-	h := defaultInsightHandler()
-
-	r := chi.NewRouter()
-	r.Put("/api/v1/insights/{insightID}/share", h.Share)
-
-	req := httptest.NewRequest("PUT", "/api/v1/insights/i1/share", nil)
-	req = req.WithContext(coachCtx(req.Context()))
-	rec := httptest.NewRecorder()
-
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
-	}
-}
-
-func TestInsightHandler_Share_Unauthenticated(t *testing.T) {
-	h := defaultInsightHandler()
-	req := httptest.NewRequest("PUT", "/api/v1/insights/i1/share", nil)
-	rec := httptest.NewRecorder()
-
-	h.Share(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401, got %d", rec.Code)
-	}
-}
-
 // --- handleInsightError Tests ---
 
-func TestHandleInsightError_ValidationError(t *testing.T) {
-	rec := httptest.NewRecorder()
-	handleInsightError(rec, &usecase.ValidationError{Message: "bad input"})
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", rec.Code)
+func TestHandleInsightError_MapsErrorTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected int
+	}{
+		{"ValidationError", &usecase.ValidationError{Message: "bad input"}, http.StatusBadRequest},
+		{"AuthorizationError", &usecase.AuthorizationError{Message: "forbidden"}, http.StatusForbidden},
+		{"StatusTransitionError", &entities.StatusTransitionError{From: "draft", To: "shared"}, http.StatusUnprocessableEntity},
 	}
-}
 
-func TestHandleInsightError_AuthorizationError(t *testing.T) {
-	rec := httptest.NewRecorder()
-	handleInsightError(rec, &usecase.AuthorizationError{Message: "forbidden"})
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rec.Code)
-	}
-}
-
-func TestHandleInsightError_StatusTransitionError(t *testing.T) {
-	rec := httptest.NewRecorder()
-	handleInsightError(rec, &entities.StatusTransitionError{From: "draft", To: "shared"})
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected 422, got %d", rec.Code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handleInsightError(rec, tt.err)
+			if rec.Code != tt.expected {
+				t.Errorf("expected %d, got %d", tt.expected, rec.Code)
+			}
+		})
 	}
 }

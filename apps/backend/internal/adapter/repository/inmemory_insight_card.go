@@ -73,6 +73,26 @@ var priorityOrder = map[string]int{
 	entities.InsightPriorityLow:    3,
 }
 
+// paginateInsights applies offset/limit pagination to a slice of insight cards.
+func paginateInsights(items []*entities.InsightCard, limit, offset int) ([]*entities.InsightCard, int) {
+	total := len(items)
+
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total {
+		return []*entities.InsightCard{}, total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return items[offset:end], total
+}
+
 // ListByCoach retrieves insight cards for a coach with filtering and pagination.
 func (r *InMemoryInsightCardRepository) ListByCoach(_ context.Context, filter repository.InsightCardFilter) ([]*entities.InsightCard, int, error) {
 	r.mu.RLock()
@@ -103,26 +123,8 @@ func (r *InMemoryInsightCardRepository) ListByCoach(_ context.Context, filter re
 		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
 	})
 
-	total := len(filtered)
-
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	offset := filter.Offset
-	if offset < 0 {
-		offset = 0
-	}
-
-	if offset >= len(filtered) {
-		return []*entities.InsightCard{}, total, nil
-	}
-	end := offset + limit
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-
-	return filtered[offset:end], total, nil
+	page, total := paginateInsights(filtered, filter.Limit, filter.Offset)
+	return page, total, nil
 }
 
 // ListByClient retrieves insight cards for a specific client with filtering.
@@ -150,26 +152,8 @@ func (r *InMemoryInsightCardRepository) ListByClient(_ context.Context, filter r
 		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
 	})
 
-	total := len(filtered)
-
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	offset := filter.Offset
-	if offset < 0 {
-		offset = 0
-	}
-
-	if offset >= len(filtered) {
-		return []*entities.InsightCard{}, total, nil
-	}
-	end := offset + limit
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-
-	return filtered[offset:end], total, nil
+	page, total := paginateInsights(filtered, filter.Limit, filter.Offset)
+	return page, total, nil
 }
 
 // Seed adds insight cards directly for testing purposes.

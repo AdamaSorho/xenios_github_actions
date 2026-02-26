@@ -1,40 +1,11 @@
 import { InsightRepository } from '@/domain/repositories/InsightRepository'
-import { InsightCard, InsightQueueResponse } from '@/domain/entities/InsightCard'
 import { GetInsightQueueUseCase } from '@/application/usecases/GetInsightQueueUseCase'
 import { GetClientInsightsUseCase } from '@/application/usecases/GetClientInsightsUseCase'
 import { ApproveInsightUseCase } from '@/application/usecases/ApproveInsightUseCase'
 import { DismissInsightUseCase } from '@/application/usecases/DismissInsightUseCase'
 import { EditInsightUseCase } from '@/application/usecases/EditInsightUseCase'
 import { ShareInsightUseCase } from '@/application/usecases/ShareInsightUseCase'
-
-function createMockInsightRepo(): jest.Mocked<InsightRepository> {
-  return {
-    getQueue: jest.fn(),
-    getClientInsights: jest.fn(),
-    approve: jest.fn(),
-    dismiss: jest.fn(),
-    edit: jest.fn(),
-    share: jest.fn(),
-  }
-}
-
-const mockInsight: InsightCard = {
-  id: 'insight-1',
-  coachId: 'coach-1',
-  clientId: 'client-1',
-  title: 'Test Insight',
-  body: 'Test body',
-  category: 'nutrition',
-  status: 'draft',
-  priority: 'high',
-  createdAt: '2026-02-15T10:00:00Z',
-  updatedAt: '2026-02-15T10:00:00Z',
-}
-
-const mockQueueResponse: InsightQueueResponse = {
-  insights: [mockInsight],
-  pagination: { page: 1, limit: 20, total: 1 },
-}
+import { mockInsight, mockQueueResponse, createMockInsightRepo } from '../helpers/insightFixtures'
 
 describe('GetInsightQueueUseCase', () => {
   let repo: jest.Mocked<InsightRepository>
@@ -86,43 +57,25 @@ describe('GetClientInsightsUseCase', () => {
   })
 })
 
-describe('ApproveInsightUseCase', () => {
+// Table-driven tests for mutation use cases (approve, dismiss, share)
+describe.each([
+  { name: 'ApproveInsightUseCase', UCClass: ApproveInsightUseCase, method: 'approve' as const, status: 'approved' as const },
+  { name: 'DismissInsightUseCase', UCClass: DismissInsightUseCase, method: 'dismiss' as const, status: 'dismissed' as const },
+  { name: 'ShareInsightUseCase', UCClass: ShareInsightUseCase, method: 'share' as const, status: 'shared' as const },
+])('$name', ({ UCClass, method, status }) => {
   let repo: jest.Mocked<InsightRepository>
-  let uc: ApproveInsightUseCase
+  let uc: InstanceType<typeof UCClass>
 
   beforeEach(() => {
     repo = createMockInsightRepo()
-    uc = new ApproveInsightUseCase(repo)
+    uc = new UCClass(repo)
   })
 
-  test('execute_ValidId_ReturnsApprovedInsight', async () => {
-    const approved = { ...mockInsight, status: 'approved' as const }
-    repo.approve.mockResolvedValue(approved)
-    const result = await uc.execute('insight-1')
-    expect(result.status).toBe('approved')
-    expect(repo.approve).toHaveBeenCalledWith('insight-1')
-  })
-
-  test('execute_EmptyId_ThrowsError', async () => {
-    await expect(uc.execute('')).rejects.toThrow('insight_id is required')
-    expect(repo.approve).not.toHaveBeenCalled()
-  })
-})
-
-describe('DismissInsightUseCase', () => {
-  let repo: jest.Mocked<InsightRepository>
-  let uc: DismissInsightUseCase
-
-  beforeEach(() => {
-    repo = createMockInsightRepo()
-    uc = new DismissInsightUseCase(repo)
-  })
-
-  test('execute_ValidId_ReturnsDismissedInsight', async () => {
-    const dismissed = { ...mockInsight, status: 'dismissed' as const }
-    repo.dismiss.mockResolvedValue(dismissed)
-    const result = await uc.execute('insight-1')
-    expect(result.status).toBe('dismissed')
+  test(`execute_ValidId_Returns${status}Insight`, async () => {
+    const result = { ...mockInsight, status }
+    repo[method].mockResolvedValue(result)
+    const card = await uc.execute('insight-1')
+    expect(card.status).toBe(status)
   })
 
   test('execute_EmptyId_ThrowsError', async () => {
@@ -153,26 +106,5 @@ describe('EditInsightUseCase', () => {
 
   test('execute_EmptyTitleAndBody_ThrowsError', async () => {
     await expect(uc.execute('insight-1', {})).rejects.toThrow('title or body is required')
-  })
-})
-
-describe('ShareInsightUseCase', () => {
-  let repo: jest.Mocked<InsightRepository>
-  let uc: ShareInsightUseCase
-
-  beforeEach(() => {
-    repo = createMockInsightRepo()
-    uc = new ShareInsightUseCase(repo)
-  })
-
-  test('execute_ValidId_ReturnsSharedInsight', async () => {
-    const shared = { ...mockInsight, status: 'shared' as const }
-    repo.share.mockResolvedValue(shared)
-    const result = await uc.execute('insight-1')
-    expect(result.status).toBe('shared')
-  })
-
-  test('execute_EmptyId_ThrowsError', async () => {
-    await expect(uc.execute('')).rejects.toThrow('insight_id is required')
   })
 })

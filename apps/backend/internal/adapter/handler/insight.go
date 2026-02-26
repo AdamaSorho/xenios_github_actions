@@ -22,44 +22,29 @@ type GetClientInsightsUseCase interface {
 	Execute(ctx context.Context, input usecase.GetClientInsightsInput) (*usecase.GetClientInsightsOutput, error)
 }
 
-// ApproveInsightUseCase defines the interface for the approve insight use case.
-type ApproveInsightUseCase interface {
-	Execute(ctx context.Context, input usecase.ApproveInsightInput) (*entities.InsightCard, error)
-}
-
-// DismissInsightUseCase defines the interface for the dismiss insight use case.
-type DismissInsightUseCase interface {
-	Execute(ctx context.Context, input usecase.DismissInsightInput) (*entities.InsightCard, error)
-}
-
-// EditInsightUseCase defines the interface for the edit insight use case.
-type EditInsightUseCase interface {
-	Execute(ctx context.Context, input usecase.EditInsightInput) (*entities.InsightCard, error)
-}
-
-// ShareInsightUseCase defines the interface for the share insight use case.
-type ShareInsightUseCase interface {
-	Execute(ctx context.Context, input usecase.ShareInsightInput) (*entities.InsightCard, error)
+// InsightActionUseCase is a common interface for single-insight mutation use cases.
+type InsightActionUseCase[T any] interface {
+	Execute(ctx context.Context, input T) (*entities.InsightCard, error)
 }
 
 // InsightHandler handles HTTP requests for insight card operations.
 type InsightHandler struct {
-	getQueueUC      GetInsightQueueUseCase
-	getClientUC     GetClientInsightsUseCase
-	approveUC       ApproveInsightUseCase
-	dismissUC       DismissInsightUseCase
-	editUC          EditInsightUseCase
-	shareUC         ShareInsightUseCase
+	getQueueUC  GetInsightQueueUseCase
+	getClientUC GetClientInsightsUseCase
+	approveUC   InsightActionUseCase[usecase.ApproveInsightInput]
+	dismissUC   InsightActionUseCase[usecase.DismissInsightInput]
+	editUC      InsightActionUseCase[usecase.EditInsightInput]
+	shareUC     InsightActionUseCase[usecase.ShareInsightInput]
 }
 
 // NewInsightHandler creates a new InsightHandler.
 func NewInsightHandler(
 	getQueueUC GetInsightQueueUseCase,
 	getClientUC GetClientInsightsUseCase,
-	approveUC ApproveInsightUseCase,
-	dismissUC DismissInsightUseCase,
-	editUC EditInsightUseCase,
-	shareUC ShareInsightUseCase,
+	approveUC InsightActionUseCase[usecase.ApproveInsightInput],
+	dismissUC InsightActionUseCase[usecase.DismissInsightInput],
+	editUC InsightActionUseCase[usecase.EditInsightInput],
+	shareUC InsightActionUseCase[usecase.ShareInsightInput],
 ) *InsightHandler {
 	return &InsightHandler{
 		getQueueUC:  getQueueUC,
@@ -71,11 +56,50 @@ func NewInsightHandler(
 	}
 }
 
-// GetQueue handles GET /api/v1/insights/queue
-func (h *InsightHandler) GetQueue(w http.ResponseWriter, r *http.Request) {
+// requireAuth extracts and validates authentication claims from the request.
+// Returns nil and writes an error response if authentication fails.
+func requireAuth(w http.ResponseWriter, r *http.Request) *middleware.UserClaims {
 	claims := middleware.GetUserClaims(r.Context())
 	if claims == nil {
 		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
+	}
+	return claims
+}
+
+// requireInsightID extracts the insightID URL parameter.
+// Returns empty string and writes an error response if missing.
+func requireInsightID(w http.ResponseWriter, r *http.Request) string {
+	id := chi.URLParam(r, "insightID")
+	if id == "" {
+		respondErrorWithCode(w, http.StatusBadRequest, "missing insight ID", "INVALID_REQUEST", nil)
+	}
+	return id
+}
+
+// parsePaginationParams extracts limit, offset, and status from query parameters.
+func parsePaginationParams(r *http.Request) (limit, offset int, status string) {
+	limit, _ = strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ = strconv.Atoi(r.URL.Query().Get("offset"))
+	status = r.URL.Query().Get("status")
+	return
+}
+
+// respondInsightList writes a paginated insight list response.
+func respondInsightList(w http.ResponseWriter, out *usecase.InsightListOutput) {
+	_ = respondJSON(w, http.StatusOK, map[string]interface{}{
+		"insights": out.Insights,
+		"pagination": map[string]interface{}{
+			"page":  (out.Offset / max(out.Limit, 1)) + 1,
+			"limit": out.Limit,
+			"total": out.Total,
+		},
+	})
+}
+
+// GetQueue handles GET /api/v1/insights/queue
+func (h *InsightHandler) GetQueue(w http.ResponseWriter, r *http.Request) {
+	claims := requireAuth(w, r)
+	if claims == nil {
 		return
 	}
 
@@ -84,9 +108,7 @@ func (h *InsightHandler) GetQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	status := r.URL.Query().Get("status")
+	limit, offset, status := parsePaginationParams(r)
 
 	out, err := h.getQueueUC.Execute(r.Context(), usecase.GetInsightQueueInput{
 		CoachID: claims.Subject,
@@ -99,17 +121,13 @@ func (h *InsightHandler) GetQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = respondJSON(w, http.StatusOK, map[string]interface{}{
-		"insights":   out.Insights,
-		"pagination": map[string]interface{}{"page": (out.Offset / max(out.Limit, 1)) + 1, "limit": out.Limit, "total": out.Total},
-	})
+	respondInsightList(w, out)
 }
 
 // GetClientInsights handles GET /api/v1/clients/{clientID}/insights
 func (h *InsightHandler) GetClientInsights(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
 
@@ -119,9 +137,7 @@ func (h *InsightHandler) GetClientInsights(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	status := r.URL.Query().Get("status")
+	limit, offset, status := parsePaginationParams(r)
 
 	out, err := h.getClientUC.Execute(r.Context(), usecase.GetClientInsightsInput{
 		CoachID:  claims.Subject,
@@ -135,10 +151,7 @@ func (h *InsightHandler) GetClientInsights(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_ = respondJSON(w, http.StatusOK, map[string]interface{}{
-		"insights":   out.Insights,
-		"pagination": map[string]interface{}{"page": (out.Offset / max(out.Limit, 1)) + 1, "limit": out.Limit, "total": out.Total},
-	})
+	respondInsightList(w, out)
 }
 
 // EditInsightRequest is the JSON body for editing an insight.
@@ -149,15 +162,12 @@ type EditInsightRequest struct {
 
 // Approve handles PUT /api/v1/insights/{insightID}/approve
 func (h *InsightHandler) Approve(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
-
-	insightID := chi.URLParam(r, "insightID")
+	insightID := requireInsightID(w, r)
 	if insightID == "" {
-		respondErrorWithCode(w, http.StatusBadRequest, "missing insight ID", "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -169,21 +179,17 @@ func (h *InsightHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		handleInsightError(w, err)
 		return
 	}
-
 	_ = respondJSON(w, http.StatusOK, card)
 }
 
 // Dismiss handles PUT /api/v1/insights/{insightID}/dismiss
 func (h *InsightHandler) Dismiss(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
-
-	insightID := chi.URLParam(r, "insightID")
+	insightID := requireInsightID(w, r)
 	if insightID == "" {
-		respondErrorWithCode(w, http.StatusBadRequest, "missing insight ID", "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -195,21 +201,17 @@ func (h *InsightHandler) Dismiss(w http.ResponseWriter, r *http.Request) {
 		handleInsightError(w, err)
 		return
 	}
-
 	_ = respondJSON(w, http.StatusOK, card)
 }
 
 // Edit handles PUT /api/v1/insights/{insightID}
 func (h *InsightHandler) Edit(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
-
-	insightID := chi.URLParam(r, "insightID")
+	insightID := requireInsightID(w, r)
 	if insightID == "" {
-		respondErrorWithCode(w, http.StatusBadRequest, "missing insight ID", "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -229,21 +231,17 @@ func (h *InsightHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		handleInsightError(w, err)
 		return
 	}
-
 	_ = respondJSON(w, http.StatusOK, card)
 }
 
 // Share handles PUT /api/v1/insights/{insightID}/share
 func (h *InsightHandler) Share(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
-
-	insightID := chi.URLParam(r, "insightID")
+	insightID := requireInsightID(w, r)
 	if insightID == "" {
-		respondErrorWithCode(w, http.StatusBadRequest, "missing insight ID", "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -255,7 +253,6 @@ func (h *InsightHandler) Share(w http.ResponseWriter, r *http.Request) {
 		handleInsightError(w, err)
 		return
 	}
-
 	_ = respondJSON(w, http.StatusOK, card)
 }
 

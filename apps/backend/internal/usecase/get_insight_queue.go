@@ -25,13 +25,8 @@ type GetInsightQueueInput struct {
 	Offset  int
 }
 
-// GetInsightQueueOutput holds the output of the queue query.
-type GetInsightQueueOutput struct {
-	Insights []*entities.InsightCard `json:"insights"`
-	Total    int                     `json:"total"`
-	Limit    int                     `json:"limit"`
-	Offset   int                     `json:"offset"`
-}
+// GetInsightQueueOutput is an alias for the shared InsightListOutput.
+type GetInsightQueueOutput = InsightListOutput
 
 // Execute retrieves the insight queue for the given coach.
 func (uc *GetInsightQueueUseCase) Execute(ctx context.Context, input GetInsightQueueInput) (*GetInsightQueueOutput, error) {
@@ -39,38 +34,22 @@ func (uc *GetInsightQueueUseCase) Execute(ctx context.Context, input GetInsightQ
 		return nil, &ValidationError{Message: "coach_id is required"}
 	}
 
-	if input.Limit <= 0 {
-		input.Limit = 20
-	}
-	if input.Limit > 100 {
-		input.Limit = 100
-	}
+	input.Limit = normalizePagination(input.Limit, 100, 20)
 
 	status := input.Status
 	if status == "" {
 		status = entities.InsightStatusDraft
 	}
 
-	filter := repository.InsightCardFilter{
+	insights, total, err := uc.insightRepo.ListByCoach(ctx, repository.InsightCardFilter{
 		CoachID: input.CoachID,
 		Status:  status,
 		Limit:   input.Limit,
 		Offset:  input.Offset,
-	}
-
-	insights, total, err := uc.insightRepo.ListByCoach(ctx, filter)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	if insights == nil {
-		insights = []*entities.InsightCard{}
-	}
-
-	return &GetInsightQueueOutput{
-		Insights: insights,
-		Total:    total,
-		Limit:    input.Limit,
-		Offset:   input.Offset,
-	}, nil
+	return newInsightListOutput(insights, total, input.Limit, input.Offset), nil
 }

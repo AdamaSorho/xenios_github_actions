@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/nutrition"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -224,7 +227,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,12 +235,19 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
+
+	// Register extract_nutrition handler with real use case
+	nutritionRepo := repository.NewInMemoryNutritionRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	csvParser := nutrition.NewCSVParser()
+	extractNutritionUC := usecase.NewExtractNutritionUseCase(nutritionRepo, auditRepo, csvParser)
+	w.RegisterHandler(entities.JobTypeExtractNutrition, newExtractNutritionHandler(extractNutritionUC))
 
 	ctx := context.Background()
 	w.Start(ctx)
@@ -257,6 +267,35 @@ func setupUploadHandler() *handler.UploadHandler {
 	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
 
 	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)
+}
+
+// newExtractNutritionHandler creates a job handler for extract_nutrition jobs.
+// The job payload must contain: artifact_id, client_id, coach_id, csv_data (base64).
+func newExtractNutritionHandler(uc *usecase.ExtractNutritionUseCase) worker.JobHandler {
+	return func(ctx context.Context, job *entities.Job) error {
+		var payload struct {
+			ArtifactID string `json:"artifact_id"`
+			ClientID   string `json:"client_id"`
+			CoachID    string `json:"coach_id"`
+			CSVData    []byte `json:"csv_data"`
+		}
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return fmt.Errorf("decode job payload: %w", err)
+		}
+
+		out, err := uc.Execute(ctx, usecase.ExtractNutritionInput{
+			CSVData:    payload.CSVData,
+			ClientID:   payload.ClientID,
+			CoachID:    payload.CoachID,
+			ArtifactID: payload.ArtifactID,
+		})
+		if err != nil {
+			return fmt.Errorf("extract nutrition: %w", err)
+		}
+
+		log.Printf("Nutrition extraction complete: %d days, %d measurements", out.DaysProcessed, out.MeasurementsCreated)
+		return nil
+	}
 }
 
 // getPort returns the port to listen on

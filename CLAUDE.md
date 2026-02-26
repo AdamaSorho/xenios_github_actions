@@ -243,7 +243,13 @@ apps/backend/migrations/
 
 1. **Raw SQL only** - No migration tools that generate SQL (no goose, migrate CLI generators)
 2. **Sequential numbering** - `NNN_description.up.sql` and `NNN_description.down.sql`
-3. **Idempotent** - Use `IF NOT EXISTS`, `IF EXISTS` where possible
+3. **Idempotent** - Every migration must be safe to run multiple times:
+   - Tables/Indexes: `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`
+   - Columns: `DO $$ BEGIN ALTER TABLE t ADD COLUMN c type; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`
+   - Constraints: `DO $$ BEGIN ALTER TABLE t ADD CONSTRAINT name CHECK(...); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+   - Enum values/types: `DO $$ BEGIN CREATE TYPE ...; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+   - Policies: `DROP POLICY IF EXISTS name ON table; CREATE POLICY ...`
+   - **Always check existing migrations for conflicting schema before adding new DDL**
 4. **Reversible** - Every `.up.sql` must have a matching `.down.sql`
 5. **No data loss** - Down migrations should preserve data when possible
 6. **One concern per migration** - Don't mix table creation with data seeding

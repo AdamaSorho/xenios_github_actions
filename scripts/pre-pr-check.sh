@@ -170,16 +170,29 @@ check_backend() {
     fail "Tests failed"
   fi
 
-  # 4. Lint (optional — only if golangci-lint is installed)
+  # 4. Duplication check (mirrors SonarCloud CPD — must be <3% on new code)
   if command -v golangci-lint &>/dev/null; then
+    info "Checking code duplication (SonarCloud enforces ≤3%)..."
+    DUPL_OUTPUT=$(golangci-lint run --disable-all --enable=dupl ./... 2>&1 || true)
+    DUPL_COUNT=$(echo "$DUPL_OUTPUT" | grep -c "dupl:" || true)
+    if [ "$DUPL_COUNT" -eq 0 ]; then
+      pass "No code duplication detected"
+    else
+      fail "Code duplication: $DUPL_COUNT instance(s) found — SonarCloud will fail the PR"
+      echo "$DUPL_OUTPUT" | grep "dupl:" | head -10
+      info "Fix: extract duplicated blocks into shared helper functions"
+    fi
+
+    # General lint
     info "Running linter..."
-    if golangci-lint run ./... 2>&1; then
+    if golangci-lint run --disable=dupl ./... 2>&1; then
       pass "Lint"
     else
       fail "Lint — fix lint errors before PR"
     fi
   else
-    warn "golangci-lint not installed — skipping lint (CI will still run it)"
+    warn "golangci-lint not installed — duplication and lint checks skipped"
+    warn "SonarCloud WILL check duplication (≤3% required) — install to catch it locally"
     info "Install: https://golangci-lint.run/usage/install/"
   fi
 

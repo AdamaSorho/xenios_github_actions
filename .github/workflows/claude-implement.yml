@@ -93,6 +93,21 @@ jobs:
             Multiple builders run in parallel and will all pick the same number if they
             don't check. The pre-PR script will catch this, but checking first saves time.
 
+            ## MANDATORY: Idempotent Migrations
+
+            Every migration MUST be safe to run multiple times. PostgreSQL-specific rules:
+
+            - Tables: always use `CREATE TABLE IF NOT EXISTS`
+            - Indexes: always use `CREATE INDEX IF NOT EXISTS`
+            - Columns: wrap in `DO $$ BEGIN ALTER TABLE ... ADD COLUMN ...; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`
+            - Constraints: wrap in `DO $$ BEGIN ALTER TABLE ... ADD CONSTRAINT ...; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+            - Enum values: wrap in `DO $$ BEGIN ALTER TYPE ... ADD VALUE ...; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+            - Types/Enums: wrap in `DO $$ BEGIN CREATE TYPE ...; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+            - Policies: use `DROP POLICY IF EXISTS` before `CREATE POLICY`
+
+            Never add a constraint or column that might already exist in a previous migration.
+            Always check `apps/backend/migrations/` for existing schema before adding new DDL.
+
             ## MANDATORY: Coverage Verification
 
             After writing tests, verify coverage before creating the PR:
@@ -110,14 +125,23 @@ jobs:
             ## MANDATORY: No Code Duplication (SonarCloud enforces ≤ 3%)
 
             SonarCloud will FAIL the PR if new code duplication exceeds 3%.
-            Before creating the PR, review your code for:
-            - Repeated validation logic → extract into a shared `validate*()` helper
-            - Repeated error wrapping → extract into a shared `newError()` helper
-            - Identical handler constructors → embed a base struct or use a factory
-            - Repeated audit logging calls → extract into a shared `logEvent()` helper
-            - Copy-pasted HTTP response patterns → extract into `respondJSON()` / `respondError()`
 
-            Rule of thumb: if you wrote the same block of code 2+ times, extract it.
+            **Check duplication locally before creating the PR:**
+            ```bash
+            # .golangci.yml is configured with dupl linter
+            golangci-lint run --disable-all --enable=dupl ./...
+            ```
+            Fix every duplication issue reported before opening the PR.
+
+            Common patterns that cause duplication — extract these:
+            - Repeated validation logic → `func validateXxx(input Xxx) error`
+            - Repeated error wrapping → `func newXxxError(msg string) error`
+            - Identical handler constructors → embed a base struct or use a factory function
+            - Repeated audit logging calls → `func (uc *XxxUseCase) logEvent(ctx, action, id string)`
+            - Copy-pasted HTTP response patterns → `respondJSON(w, status, data)` / `respondError(w, status, err)`
+            - Identical struct field sets across multiple types → embed a shared base struct
+
+            Rule of thumb: if you wrote the same 10+ line block 2+ times, extract it.
 
             ## Sequence Diagram Requirements
 

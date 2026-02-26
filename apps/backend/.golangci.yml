@@ -1,0 +1,21 @@
+linters:
+  enable:
+    - dupl       # Code duplication detection (mirrors SonarCloud CPD)
+    - govet      # Correctness checks
+    - errcheck   # Unchecked errors
+    - staticcheck # Static analysis
+
+linters-settings:
+  dupl:
+    # Threshold of lines to consider duplicate (lower = stricter)
+    # Set to 50 lines — catching meaningful duplication, not trivial patterns
+    threshold: 50
+
+issues:
+  # Show all duplication issues, not just first occurrence
+  max-same-issues: 0
+  exclude-rules:
+    # Test files often have intentional repetition — exclude from dupl check
+    - path: _test\.go
+      linters:
+        - dupl

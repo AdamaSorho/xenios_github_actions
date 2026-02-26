@@ -19,6 +19,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/inbody"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -224,7 +225,8 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	// Register placeholder handlers for standard job types
+	placeholderJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,18 +234,41 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
 
+	// Register InBody extraction handler
+	extractInBodyUC := setupExtractInBodyUseCase()
+	w.RegisterHandler(entities.JobTypeExtractInBody, func(ctx context.Context, job *entities.Job) error {
+		return extractInBodyUC.Execute(ctx, job)
+	})
+
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// setupExtractInBodyUseCase wires up the InBody extraction dependencies.
+func setupExtractInBodyUseCase() *usecase.ExtractInBodyUseCase {
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	fileStorage := repository.NewInMemoryFileStorage()
+	auditRepo := repository.NewInMemoryAuditRepository()
+
+	// Use a simple text extractor that converts PDF bytes to string.
+	// For MVP, this extracts text assuming the PDF is text-based.
+	// In production, replace with a proper PDF text extraction library.
+	pdfExtractor := inbody.NewTextExtractor(func(pdfData []byte) (string, error) {
+		return string(pdfData), nil
+	})
+
+	return usecase.NewExtractInBodyUseCase(artifactRepo, measurementRepo, fileStorage, pdfExtractor, auditRepo)
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

@@ -58,6 +58,56 @@ func (p *CSVNutritionParser) DailyTotalsToMeasurements(dailyTotals []entities.Da
 	return DailyTotalsToMeasurements(dailyTotals, clientID, recordedBy)
 }
 
+// columnMapping defines how CSV column headers map to nutrition fields.
+type columnMapping struct {
+	date     string
+	calories string
+	protein  string
+	carbs    string
+	fat      string
+	fiber    string
+}
+
+// mfpColumns defines column names for MyFitnessPal CSV format.
+var mfpColumns = columnMapping{
+	date:     "date",
+	calories: "calories",
+	protein:  "protein (g)",
+	carbs:    "carbs (g)",
+	fat:      "fat (g)",
+	fiber:    "fiber (g)",
+}
+
+// mfpRequiredHeaders are headers required to identify MFP format.
+var mfpRequiredHeaders = []string{"date", "meal", "calories", "fat (g)", "protein (g)", "carbs (g)"}
+
+// genericColumns defines column names for generic CSV format.
+var genericColumns = columnMapping{
+	date:     "date",
+	calories: "calories",
+	protein:  "protein",
+	carbs:    "carbs",
+	fat:      "fat",
+	fiber:    "fiber",
+}
+
+// genericRequiredHeaders are headers required to identify generic format.
+var genericRequiredHeaders = []string{"date", "calories", "protein", "carbs", "fat"}
+
+// hasRequiredHeaders checks whether all required headers are present in the given headers.
+func hasRequiredHeaders(headers []string, required []string) bool {
+	headerSet := make(map[string]bool, len(headers))
+	for _, h := range headers {
+		headerSet[h] = true
+	}
+	for _, r := range required {
+		if !headerSet[r] {
+			return false
+		}
+	}
+	return true
+}
+
 // DetectFormat examines the CSV header row to determine the file format.
 func DetectFormat(data []byte) entities.CSVFormat {
 	if len(data) == 0 {
@@ -75,49 +125,13 @@ func DetectFormat(data []byte) entities.CSVFormat {
 		normalized[i] = strings.ToLower(strings.TrimSpace(h))
 	}
 
-	if isMFPFormat(normalized) {
+	if hasRequiredHeaders(normalized, mfpRequiredHeaders) {
 		return entities.CSVFormatMyFitnessPal
 	}
-	if isGenericFormat(normalized) {
+	if hasRequiredHeaders(normalized, genericRequiredHeaders) {
 		return entities.CSVFormatGeneric
 	}
 	return entities.CSVFormatUnknown
-}
-
-func isMFPFormat(headers []string) bool {
-	required := map[string]bool{
-		"date": false, "meal": false, "calories": false,
-		"fat (g)": false, "protein (g)": false, "carbs (g)": false,
-	}
-	for _, h := range headers {
-		if _, ok := required[h]; ok {
-			required[h] = true
-		}
-	}
-	for _, found := range required {
-		if !found {
-			return false
-		}
-	}
-	return true
-}
-
-func isGenericFormat(headers []string) bool {
-	required := map[string]bool{
-		"date": false, "calories": false, "protein": false,
-		"carbs": false, "fat": false,
-	}
-	for _, h := range headers {
-		if _, ok := required[h]; ok {
-			required[h] = true
-		}
-	}
-	for _, found := range required {
-		if !found {
-			return false
-		}
-	}
-	return true
 }
 
 // Parse reads a nutrition CSV and returns parsed daily totals.
@@ -131,17 +145,21 @@ func Parse(data []byte) (*ParseResult, error) {
 		return nil, fmt.Errorf("unrecognized CSV format")
 	}
 
+	var mapping columnMapping
 	switch format {
 	case entities.CSVFormatMyFitnessPal:
-		return parseMFP(data, format)
+		mapping = mfpColumns
 	case entities.CSVFormatGeneric:
-		return parseGeneric(data, format)
+		mapping = genericColumns
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", format)
 	}
+
+	return parseCSVWithMapping(data, format, mapping)
 }
 
-func parseMFP(data []byte, format entities.CSVFormat) (*ParseResult, error) {
+// parseCSVWithMapping reads CSV rows and aggregates daily nutrition using the given column mapping.
+func parseCSVWithMapping(data []byte, format entities.CSVFormat, mapping columnMapping) (*ParseResult, error) {
 	reader := csv.NewReader(bytes.NewReader(data))
 	header, err := reader.Read()
 	if err != nil {
@@ -150,98 +168,12 @@ func parseMFP(data []byte, format entities.CSVFormat) (*ParseResult, error) {
 
 	colIndex := buildColumnIndex(header)
 
-	dateIdx := colIndex["date"]
-	calIdx := colIndex["calories"]
-	fatIdx := colIndex["fat (g)"]
-	proteinIdx := colIndex["protein (g)"]
-	carbsIdx := colIndex["carbs (g)"]
-	fiberIdx := colIndex["fiber (g)"]
-
-	dailyMap := make(map[string]*entities.DailyNutrition)
-	skipped := 0
-	total := 0
-
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			skipped++
-			continue
-		}
-		total++
-
-		dateStr := strings.TrimSpace(record[dateIdx])
-		date, err := parseDate(dateStr)
-		if err != nil {
-			skipped++
-			continue
-		}
-
-		calories, err := parseFloat(record[calIdx])
-		if err != nil {
-			skipped++
-			continue
-		}
-		fat, err := parseFloat(record[fatIdx])
-		if err != nil {
-			skipped++
-			continue
-		}
-		protein, err := parseFloat(record[proteinIdx])
-		if err != nil {
-			skipped++
-			continue
-		}
-		carbs, err := parseFloat(record[carbsIdx])
-		if err != nil {
-			skipped++
-			continue
-		}
-
-		var fiber float64
-		if fiberIdx >= 0 && fiberIdx < len(record) {
-			fiber, _ = parseFloat(record[fiberIdx]) // fiber is optional
-		}
-
-		key := dateStr
-		if existing, ok := dailyMap[key]; ok {
-			existing.Calories += calories
-			existing.Protein += protein
-			existing.Carbs += carbs
-			existing.Fat += fat
-			existing.Fiber += fiber
-		} else {
-			dailyMap[key] = &entities.DailyNutrition{
-				Date:     date,
-				Calories: calories,
-				Protein:  protein,
-				Carbs:    carbs,
-				Fat:      fat,
-				Fiber:    fiber,
-			}
-		}
-	}
-
-	return buildResult(dailyMap, format, skipped, total), nil
-}
-
-func parseGeneric(data []byte, format entities.CSVFormat) (*ParseResult, error) {
-	reader := csv.NewReader(bytes.NewReader(data))
-	header, err := reader.Read()
-	if err != nil {
-		return nil, fmt.Errorf("read header: %w", err)
-	}
-
-	colIndex := buildColumnIndex(header)
-
-	dateIdx := colIndex["date"]
-	calIdx := colIndex["calories"]
-	proteinIdx := colIndex["protein"]
-	carbsIdx := colIndex["carbs"]
-	fatIdx := colIndex["fat"]
-	fiberIdx := colIndex["fiber"]
+	dateIdx := colIndex[mapping.date]
+	calIdx := colIndex[mapping.calories]
+	proteinIdx := colIndex[mapping.protein]
+	carbsIdx := colIndex[mapping.carbs]
+	fatIdx := colIndex[mapping.fat]
+	fiberIdx := colIndex[mapping.fiber]
 
 	dailyMap := make(map[string]*entities.DailyNutrition)
 	skipped := 0

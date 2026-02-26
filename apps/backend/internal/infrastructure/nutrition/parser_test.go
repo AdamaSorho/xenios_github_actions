@@ -303,3 +303,99 @@ func TestDailyTotalsToMeasurements_CorrectUnits(t *testing.T) {
 		}
 	}
 }
+
+// --- CSVNutritionParser interface method tests ---
+
+func TestCSVNutritionParser_Parse_DelegatesCorrectly(t *testing.T) {
+	parser := NewCSVNutritionParser()
+	data := readTestFile(t, "single_day.csv")
+
+	result, err := parser.Parse(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Format != entities.CSVFormatMyFitnessPal {
+		t.Errorf("expected format %s, got %s", entities.CSVFormatMyFitnessPal, result.Format)
+	}
+	if len(result.DailyTotals) != 1 {
+		t.Errorf("expected 1 daily total, got %d", len(result.DailyTotals))
+	}
+}
+
+func TestCSVNutritionParser_Parse_EmptyInput_ReturnsError(t *testing.T) {
+	parser := NewCSVNutritionParser()
+
+	_, err := parser.Parse([]byte{})
+	if err == nil {
+		t.Fatal("expected error for empty input")
+	}
+}
+
+func TestCSVNutritionParser_ComputeAverages_DelegatesCorrectly(t *testing.T) {
+	parser := NewCSVNutritionParser()
+	daily := []entities.DailyNutrition{
+		{Date: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC), Calories: 2050, Protein: 132, Carbs: 203, Fat: 70, Fiber: 21},
+	}
+
+	avgs := parser.ComputeAverages(daily)
+	if avgs.Avg7Day == nil {
+		t.Fatal("expected 7-day average")
+	}
+	if avgs.Avg7Day.Calories != 2050 {
+		t.Errorf("expected avg calories 2050, got %.0f", avgs.Avg7Day.Calories)
+	}
+}
+
+func TestCSVNutritionParser_DailyTotalsToMeasurements_DelegatesCorrectly(t *testing.T) {
+	parser := NewCSVNutritionParser()
+	daily := []entities.DailyNutrition{
+		{Date: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC), Calories: 2050, Protein: 132, Carbs: 203, Fat: 70, Fiber: 21},
+	}
+
+	measurements := parser.DailyTotalsToMeasurements(daily, "client-1", "coach-1")
+	if len(measurements) != 5 {
+		t.Errorf("expected 5 measurements, got %d", len(measurements))
+	}
+}
+
+func TestComputeAverages_EmptyInput_ReturnsEmptyAverages(t *testing.T) {
+	avgs := ComputeAverages(nil)
+	if avgs.Avg7Day != nil {
+		t.Error("expected nil 7-day average for empty input")
+	}
+	if avgs.Avg14Day != nil {
+		t.Error("expected nil 14-day average for empty input")
+	}
+	if avgs.Avg30Day != nil {
+		t.Error("expected nil 30-day average for empty input")
+	}
+}
+
+func TestParse_UnrecognizedFormat_ReturnsError(t *testing.T) {
+	data := []byte("unknown_col1,unknown_col2\nval1,val2\n")
+	_, err := Parse(data)
+	if err == nil {
+		t.Fatal("expected error for unrecognized format")
+	}
+}
+
+func TestDailyTotalsToMeasurements_EmptyInput_ReturnsNil(t *testing.T) {
+	measurements := DailyTotalsToMeasurements(nil, "client-1", "coach-1")
+	if measurements != nil {
+		t.Errorf("expected nil for empty input, got %d measurements", len(measurements))
+	}
+}
+
+func TestHasRequiredHeaders_AllPresent_ReturnsTrue(t *testing.T) {
+	headers := []string{"date", "meal", "calories", "fat (g)", "protein (g)", "carbs (g)"}
+	if !hasRequiredHeaders(headers, mfpRequiredHeaders) {
+		t.Error("expected true when all required headers are present")
+	}
+}
+
+func TestHasRequiredHeaders_MissingHeader_ReturnsFalse(t *testing.T) {
+	headers := []string{"date", "calories"}
+	if hasRequiredHeaders(headers, mfpRequiredHeaders) {
+		t.Error("expected false when required headers are missing")
+	}
+}

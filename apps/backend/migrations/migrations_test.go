@@ -66,6 +66,7 @@ func TestMigrations_AllFilesExist(t *testing.T) {
 		"000008_create_job_queue",
 		"000009_create_refresh_tokens",
 		"000011_audit_trigger",
+		"000012_add_document_subtype",
 	}
 
 	dir := migrationDir(t)

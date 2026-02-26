@@ -27,11 +27,13 @@ func (m *mockRequestUploadUC) Execute(_ context.Context, _ usecase.RequestUpload
 }
 
 type mockConfirmUploadUC struct {
-	output *usecase.ConfirmUploadOutput
-	err    error
+	output   *usecase.ConfirmUploadOutput
+	err      error
+	lastInput usecase.ConfirmUploadInput
 }
 
-func (m *mockConfirmUploadUC) Execute(_ context.Context, _ usecase.ConfirmUploadInput) (*usecase.ConfirmUploadOutput, error) {
+func (m *mockConfirmUploadUC) Execute(_ context.Context, input usecase.ConfirmUploadInput) (*usecase.ConfirmUploadOutput, error) {
+	m.lastInput = input
 	return m.output, m.err
 }
 
@@ -42,6 +44,22 @@ type mockRequestDownloadUC struct {
 
 func (m *mockRequestDownloadUC) Execute(_ context.Context, _ usecase.RequestDownloadInput) (*usecase.RequestDownloadOutput, error) {
 	return m.output, m.err
+}
+
+func defaultConfirmUploadMock() *mockConfirmUploadUC {
+	return &mockConfirmUploadUC{
+		output: &usecase.ConfirmUploadOutput{
+			Artifact: &entities.Artifact{
+				ID:              "art-1",
+				ClientID:        "client-1",
+				CoachID:         "coach-1",
+				FileName:        "report.pdf",
+				Status:          entities.ArtifactStatusUploaded,
+				DocumentSubtype: entities.DocumentSubtypeOther,
+			},
+			JobID: "job-1",
+		},
+	}
 }
 
 func defaultUploadHandler() *UploadHandler {
@@ -61,17 +79,7 @@ func defaultUploadHandler() *UploadHandler {
 				},
 			},
 		},
-		&mockConfirmUploadUC{
-			output: &usecase.ConfirmUploadOutput{
-				Artifact: &entities.Artifact{
-					ID:       "art-1",
-					ClientID: "client-1",
-					CoachID:  "coach-1",
-					FileName: "report.pdf",
-					Status:   entities.ArtifactStatusUploaded,
-				},
-			},
-		},
+		defaultConfirmUploadMock(),
 		&mockRequestDownloadUC{
 			output: &usecase.RequestDownloadOutput{
 				PresignedURL: "https://s3.example.com/download",
@@ -344,5 +352,119 @@ func TestUploadHandler_RequestDownloadURL_ValidationError_Returns400(t *testing.
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+// --- PresignRequest with DocumentSubtype tests ---
+
+func TestUploadHandler_RequestPresignedURL_WithDocumentSubtype_Success(t *testing.T) {
+	h := defaultUploadHandler()
+
+	body, _ := json.Marshal(PresignRequest{
+		FileName:        "inbody_scan.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		DocumentSubtype: "inbody_pdf",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/uploads/presign", bytes.NewReader(body))
+	req = withAuth(req)
+
+	h.RequestPresignedURL(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+}
+
+// --- ConfirmUpload with DocumentSubtype tests ---
+
+func TestUploadHandler_ConfirmUpload_WithDocumentSubtype_PassesHint(t *testing.T) {
+	confirmMock := defaultConfirmUploadMock()
+	h := NewUploadHandler(
+		&mockRequestUploadUC{},
+		confirmMock,
+		&mockRequestDownloadUC{},
+	)
+
+	body, _ := json.Marshal(ConfirmRequest{
+		DocumentSubtype: "inbody_pdf",
+	})
+
+	router := chi.NewRouter()
+	router.Post("/api/v1/uploads/{artifactID}/confirm", h.ConfirmUpload)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/uploads/art-1/confirm", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withAuth(req)
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+	if confirmMock.lastInput.DocumentSubtype != entities.DocumentSubtypeInBodyPDF {
+		t.Errorf("expected document_subtype %s, got %s", entities.DocumentSubtypeInBodyPDF, confirmMock.lastInput.DocumentSubtype)
+	}
+}
+
+func TestUploadHandler_ConfirmUpload_WithoutBody_DefaultsEmpty(t *testing.T) {
+	confirmMock := defaultConfirmUploadMock()
+	h := NewUploadHandler(
+		&mockRequestUploadUC{},
+		confirmMock,
+		&mockRequestDownloadUC{},
+	)
+
+	router := chi.NewRouter()
+	router.Post("/api/v1/uploads/{artifactID}/confirm", h.ConfirmUpload)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/uploads/art-1/confirm", nil)
+	req = withAuth(req)
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+	if confirmMock.lastInput.DocumentSubtype != "" {
+		t.Errorf("expected empty document_subtype, got %s", confirmMock.lastInput.DocumentSubtype)
+	}
+}
+
+func TestUploadHandler_ConfirmUpload_ResponseIncludesJobID(t *testing.T) {
+	confirmMock := defaultConfirmUploadMock()
+	h := NewUploadHandler(
+		&mockRequestUploadUC{},
+		confirmMock,
+		&mockRequestDownloadUC{},
+	)
+
+	router := chi.NewRouter()
+	router.Post("/api/v1/uploads/{artifactID}/confirm", h.ConfirmUpload)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/uploads/art-1/confirm", nil)
+	req = withAuth(req)
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var resp usecase.ConfirmUploadOutput
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.JobID == "" {
+		t.Error("expected non-empty job_id in response")
+	}
+	if resp.Artifact.DocumentSubtype != entities.DocumentSubtypeOther {
+		t.Errorf("expected document_subtype %s, got %s", entities.DocumentSubtypeOther, resp.Artifact.DocumentSubtype)
 	}
 }

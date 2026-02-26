@@ -120,3 +120,35 @@ func TestInMemoryArtifactRepository_UpdateStatus_NotFound_ReturnsError(t *testin
 		t.Fatal("expected error for nonexistent artifact")
 	}
 }
+
+func TestInMemoryArtifactRepository_UpdateDocumentSubtype_Success(t *testing.T) {
+	repo := NewInMemoryArtifactRepository()
+	art := &entities.Artifact{
+		ClientID: "client-1",
+		CoachID:  "coach-1",
+		FileName: "report.pdf",
+		Status:   entities.ArtifactStatusPending,
+	}
+
+	created, err := repo.Create(context.Background(), art)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	updated, err := repo.UpdateDocumentSubtype(context.Background(), created.ID, entities.DocumentSubtypeInBodyPDF)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.DocumentSubtype != entities.DocumentSubtypeInBodyPDF {
+		t.Errorf("expected document_subtype %s, got %s", entities.DocumentSubtypeInBodyPDF, updated.DocumentSubtype)
+	}
+}
+
+func TestInMemoryArtifactRepository_UpdateDocumentSubtype_NotFound_ReturnsError(t *testing.T) {
+	repo := NewInMemoryArtifactRepository()
+
+	_, err := repo.UpdateDocumentSubtype(context.Background(), "nonexistent", entities.DocumentSubtypeOther)
+	if err == nil {
+		t.Fatal("expected error for nonexistent artifact")
+	}
+}

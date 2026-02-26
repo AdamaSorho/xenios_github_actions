@@ -230,3 +230,132 @@ func TestAllowedFileExtensions_AllTypesPresent(t *testing.T) {
 		}
 	}
 }
+
+// --- DocumentSubtype & Classification Tests ---
+
+func TestIsValidDocumentSubtype_ValidTypes_ReturnTrue(t *testing.T) {
+	valid := []DocumentSubtype{
+		DocumentSubtypeInBodyPDF, DocumentSubtypeLabCSV, DocumentSubtypeLabPDF,
+		DocumentSubtypeWearableCSV, DocumentSubtypeWearableJSON,
+		DocumentSubtypeNutritionCSV, DocumentSubtypeAudio, DocumentSubtypeOther,
+	}
+	for _, st := range valid {
+		if !IsValidDocumentSubtype(st) {
+			t.Errorf("expected %q to be valid", st)
+		}
+	}
+}
+
+func TestIsValidDocumentSubtype_InvalidType_ReturnFalse(t *testing.T) {
+	if IsValidDocumentSubtype("bogus_type") {
+		t.Error("expected 'bogus_type' to be invalid")
+	}
+}
+
+func TestClassifyDocument_HintProvided_UsesHint(t *testing.T) {
+	result := ClassifyDocument(DocumentSubtypeInBodyPDF, "scan.pdf", "application/pdf")
+	if result != DocumentSubtypeInBodyPDF {
+		t.Errorf("expected %s, got %s", DocumentSubtypeInBodyPDF, result)
+	}
+}
+
+func TestClassifyDocument_HintLabCSV_UsesHint(t *testing.T) {
+	result := ClassifyDocument(DocumentSubtypeLabCSV, "blood_test.csv", "text/csv")
+	if result != DocumentSubtypeLabCSV {
+		t.Errorf("expected %s, got %s", DocumentSubtypeLabCSV, result)
+	}
+}
+
+func TestClassifyDocument_InvalidHint_FallsBackToExtension(t *testing.T) {
+	result := ClassifyDocument("invalid_hint", "recording.mp3", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %s, got %s", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_AudioExtension_ReturnsAudio(t *testing.T) {
+	tests := []struct {
+		fileName    string
+		contentType string
+	}{
+		{"recording.mp3", "audio/mpeg"},
+		{"session.wav", "audio/wav"},
+		{"note.aac", "audio/aac"},
+	}
+	for _, tc := range tests {
+		result := ClassifyDocument("", tc.fileName, tc.contentType)
+		if result != DocumentSubtypeAudio {
+			t.Errorf("ClassifyDocument(%q, %q) = %s, want %s", tc.fileName, tc.contentType, result, DocumentSubtypeAudio)
+		}
+	}
+}
+
+func TestClassifyDocument_NoHint_AudioContentType_ReturnsAudio(t *testing.T) {
+	result := ClassifyDocument("", "file", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %s, got %s", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_PDF_ReturnsOther(t *testing.T) {
+	result := ClassifyDocument("", "report.pdf", "application/pdf")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %s, got %s", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_CSV_ReturnsOther(t *testing.T) {
+	result := ClassifyDocument("", "data.csv", "text/csv")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %s, got %s", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_JSON_ReturnsOther(t *testing.T) {
+	result := ClassifyDocument("", "export.json", "application/json")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %s, got %s", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocument_MismatchedHintAndExtension_HintWins(t *testing.T) {
+	// Hint says lab_csv but file is a PDF — hint takes precedence
+	result := ClassifyDocument(DocumentSubtypeLabCSV, "report.pdf", "application/pdf")
+	if result != DocumentSubtypeLabCSV {
+		t.Errorf("expected %s, got %s", DocumentSubtypeLabCSV, result)
+	}
+}
+
+func TestDocumentSubtypeToJobType_AllMappings(t *testing.T) {
+	tests := []struct {
+		subtype  DocumentSubtype
+		expected JobType
+	}{
+		{DocumentSubtypeInBodyPDF, JobTypeExtractInBody},
+		{DocumentSubtypeLabCSV, JobTypeExtractLabResults},
+		{DocumentSubtypeLabPDF, JobTypeExtractLabResults},
+		{DocumentSubtypeWearableCSV, JobTypeExtractWearable},
+		{DocumentSubtypeWearableJSON, JobTypeExtractWearable},
+		{DocumentSubtypeNutritionCSV, JobTypeExtractNutrition},
+		{DocumentSubtypeAudio, JobTypeTranscribeAudio},
+		{DocumentSubtypeOther, JobTypeClassifyDocument},
+	}
+	for _, tc := range tests {
+		got := DocumentSubtypeToJobType(tc.subtype)
+		if got != tc.expected {
+			t.Errorf("DocumentSubtypeToJobType(%s) = %s, want %s", tc.subtype, got, tc.expected)
+		}
+	}
+}
+
+func TestDocumentSubtypeConstants_CorrectValues(t *testing.T) {
+	if DocumentSubtypeInBodyPDF != "inbody_pdf" {
+		t.Errorf("expected 'inbody_pdf', got '%s'", DocumentSubtypeInBodyPDF)
+	}
+	if DocumentSubtypeLabCSV != "lab_csv" {
+		t.Errorf("expected 'lab_csv', got '%s'", DocumentSubtypeLabCSV)
+	}
+	if DocumentSubtypeOther != "other" {
+		t.Errorf("expected 'other', got '%s'", DocumentSubtypeOther)
+	}
+}

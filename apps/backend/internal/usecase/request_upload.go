@@ -31,11 +31,12 @@ func NewRequestUploadUseCase(
 
 // RequestUploadInput holds the input for requesting an upload URL.
 type RequestUploadInput struct {
-	FileName    string
-	FileSize    int64
-	ContentType string
-	ClientID    string
-	CoachID     string
+	FileName        string
+	FileSize        int64
+	ContentType     string
+	ClientID        string
+	CoachID         string
+	DocumentSubtype entities.DocumentSubtype
 }
 
 // RequestUploadOutput holds the output of a presigned upload URL request.
@@ -81,14 +82,15 @@ func (uc *RequestUploadUseCase) Execute(ctx context.Context, input RequestUpload
 
 	// Create artifact record with pending status
 	artifact := &entities.Artifact{
-		ClientID:    input.ClientID,
-		CoachID:     input.CoachID,
-		FileName:    input.FileName,
-		FileType:    input.ContentType,
-		FileSize:    input.FileSize,
-		Type:        artTypeFromExt,
-		Status:      entities.ArtifactStatusPending,
-		ContentType: input.ContentType,
+		ClientID:        input.ClientID,
+		CoachID:         input.CoachID,
+		FileName:        input.FileName,
+		FileType:        input.ContentType,
+		FileSize:        input.FileSize,
+		Type:            artTypeFromExt,
+		Status:          entities.ArtifactStatusPending,
+		ContentType:     input.ContentType,
+		DocumentSubtype: input.DocumentSubtype,
 	}
 
 	created, err := uc.artifactRepo.Create(ctx, artifact)
@@ -107,17 +109,21 @@ func (uc *RequestUploadUseCase) Execute(ctx context.Context, input RequestUpload
 		return nil, fmt.Errorf("generate upload url: %w", err)
 	}
 
+	auditMetadata := map[string]interface{}{
+		"file_name":    input.FileName,
+		"file_size":    input.FileSize,
+		"content_type": input.ContentType,
+		"client_id":    input.ClientID,
+	}
+	if input.DocumentSubtype != "" {
+		auditMetadata["document_subtype"] = string(input.DocumentSubtype)
+	}
 	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
 		ActorID:    input.CoachID,
 		Action:     "artifact.upload_requested",
 		EntityType: "artifact",
 		EntityID:   created.ID,
-		Metadata: map[string]interface{}{
-			"file_name":    input.FileName,
-			"file_size":    input.FileSize,
-			"content_type": input.ContentType,
-			"client_id":    input.ClientID,
-		},
+		Metadata:   auditMetadata,
 	})
 
 	return &RequestUploadOutput{

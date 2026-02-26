@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/xenios/backend/internal/domain/entities"
@@ -13,6 +14,7 @@ type ConfirmUploadUseCase struct {
 	artifactRepo repository.ArtifactRepository
 	fileStorage  repository.FileStorageRepository
 	auditRepo    repository.AuditRepository
+	jobQueue     repository.JobQueue
 }
 
 // NewConfirmUploadUseCase creates a new ConfirmUploadUseCase.
@@ -20,26 +22,34 @@ func NewConfirmUploadUseCase(
 	artifactRepo repository.ArtifactRepository,
 	fileStorage repository.FileStorageRepository,
 	auditRepo repository.AuditRepository,
+	jobQueue ...repository.JobQueue,
 ) *ConfirmUploadUseCase {
-	return &ConfirmUploadUseCase{
+	uc := &ConfirmUploadUseCase{
 		artifactRepo: artifactRepo,
 		fileStorage:  fileStorage,
 		auditRepo:    auditRepo,
 	}
+	if len(jobQueue) > 0 {
+		uc.jobQueue = jobQueue[0]
+	}
+	return uc
 }
 
 // ConfirmUploadInput holds the input for confirming an upload.
 type ConfirmUploadInput struct {
-	ArtifactID string
-	CoachID    string
+	ArtifactID      string
+	CoachID         string
+	DocumentSubtype entities.DocumentSubtype
 }
 
 // ConfirmUploadOutput holds the result of the confirmation.
 type ConfirmUploadOutput struct {
 	Artifact *entities.Artifact `json:"artifact"`
+	JobID    string             `json:"job_id,omitempty"`
 }
 
-// Execute verifies the file exists in storage and updates the artifact status.
+// Execute verifies the file exists in storage, classifies the file, enqueues an extraction job,
+// and updates the artifact status.
 func (uc *ConfirmUploadUseCase) Execute(ctx context.Context, input ConfirmUploadInput) (*ConfirmUploadOutput, error) {
 	if input.ArtifactID == "" {
 		return nil, &ValidationError{Message: "artifact_id is required"}
@@ -82,19 +92,55 @@ func (uc *ConfirmUploadUseCase) Execute(ctx context.Context, input ConfirmUpload
 		return nil, fmt.Errorf("update artifact status: %w", err)
 	}
 
+	// Classify the uploaded file
+	subtype := entities.ClassifyDocument(input.DocumentSubtype, artifact.FileName, artifact.ContentType)
+	updated, err = uc.artifactRepo.UpdateDocumentSubtype(ctx, input.ArtifactID, subtype)
+	if err != nil {
+		return nil, fmt.Errorf("update document subtype: %w", err)
+	}
+
+	// Enqueue extraction job
+	var jobID string
+	if uc.jobQueue != nil {
+		jobType := entities.DocumentSubtypeToJobType(subtype)
+		payload, _ := json.Marshal(map[string]string{
+			"artifact_id":      input.ArtifactID,
+			"document_subtype": string(subtype),
+			"storage_key":      artifact.StorageKey,
+		})
+		job, err := uc.jobQueue.Enqueue(ctx, jobType, payload)
+		if err != nil {
+			return nil, fmt.Errorf("enqueue extraction job: %w", err)
+		}
+		jobID = job.ID
+	}
+
 	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
 		ActorID:    input.CoachID,
 		Action:     "artifact.upload_confirmed",
 		EntityType: "artifact",
 		EntityID:   input.ArtifactID,
 		Metadata: map[string]interface{}{
-			"storage_key": artifact.StorageKey,
-			"file_name":   artifact.FileName,
-			"client_id":   artifact.ClientID,
+			"storage_key":      artifact.StorageKey,
+			"file_name":        artifact.FileName,
+			"client_id":        artifact.ClientID,
+			"document_subtype": string(subtype),
+		},
+	})
+
+	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
+		ActorID:    input.CoachID,
+		Action:     "artifact.classified",
+		EntityType: "artifact",
+		EntityID:   input.ArtifactID,
+		Metadata: map[string]interface{}{
+			"document_subtype": string(subtype),
+			"job_id":           jobID,
 		},
 	})
 
 	return &ConfirmUploadOutput{
 		Artifact: updated,
+		JobID:    jobID,
 	}, nil
 }

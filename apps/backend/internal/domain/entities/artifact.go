@@ -68,20 +68,105 @@ var AllowedContentTypes = map[string]ArtifactType{
 	"image/png":        ArtifactTypeImage,
 }
 
+// DocumentSubtype classifies the specific kind of document for extraction routing.
+type DocumentSubtype string
+
+const (
+	DocumentSubtypeInBodyPDF    DocumentSubtype = "inbody_pdf"
+	DocumentSubtypeLabCSV       DocumentSubtype = "lab_csv"
+	DocumentSubtypeLabPDF       DocumentSubtype = "lab_pdf"
+	DocumentSubtypeWearableCSV  DocumentSubtype = "wearable_csv"
+	DocumentSubtypeWearableJSON DocumentSubtype = "wearable_json"
+	DocumentSubtypeNutritionCSV DocumentSubtype = "nutrition_csv"
+	DocumentSubtypeAudio        DocumentSubtype = "audio"
+	DocumentSubtypeOther        DocumentSubtype = "other"
+)
+
+// ValidDocumentSubtypes contains all valid document subtypes.
+var ValidDocumentSubtypes = map[DocumentSubtype]bool{
+	DocumentSubtypeInBodyPDF:    true,
+	DocumentSubtypeLabCSV:       true,
+	DocumentSubtypeLabPDF:       true,
+	DocumentSubtypeWearableCSV:  true,
+	DocumentSubtypeWearableJSON: true,
+	DocumentSubtypeNutritionCSV: true,
+	DocumentSubtypeAudio:        true,
+	DocumentSubtypeOther:        true,
+}
+
+// IsValidDocumentSubtype returns true if the subtype is a known classification.
+func IsValidDocumentSubtype(subtype DocumentSubtype) bool {
+	return ValidDocumentSubtypes[subtype]
+}
+
+// ClassifyDocument determines the document subtype based on an optional hint,
+// file extension, and content type. The hint takes precedence when valid.
+func ClassifyDocument(hint DocumentSubtype, fileName string, contentType string) DocumentSubtype {
+	if hint != "" && IsValidDocumentSubtype(hint) {
+		return hint
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+
+	// Audio files are always classified as audio
+	if isAudioExtension(ext) || isAudioContentType(ct) {
+		return DocumentSubtypeAudio
+	}
+
+	// Without a hint, PDFs, CSVs, JSON, and everything else default to "other"
+	return DocumentSubtypeOther
+}
+
+func isAudioExtension(ext string) bool {
+	switch ext {
+	case ".mp3", ".wav", ".aac":
+		return true
+	}
+	return false
+}
+
+func isAudioContentType(ct string) bool {
+	switch ct {
+	case "audio/mpeg", "audio/wav", "audio/aac":
+		return true
+	}
+	return false
+}
+
+// DocumentSubtypeToJobType maps a document subtype to the appropriate extraction job type.
+func DocumentSubtypeToJobType(subtype DocumentSubtype) JobType {
+	switch subtype {
+	case DocumentSubtypeInBodyPDF:
+		return JobTypeExtractInBody
+	case DocumentSubtypeLabCSV, DocumentSubtypeLabPDF:
+		return JobTypeExtractLabResults
+	case DocumentSubtypeWearableCSV, DocumentSubtypeWearableJSON:
+		return JobTypeExtractWearable
+	case DocumentSubtypeNutritionCSV:
+		return JobTypeExtractNutrition
+	case DocumentSubtypeAudio:
+		return JobTypeTranscribeAudio
+	default:
+		return JobTypeClassifyDocument
+	}
+}
+
 // Artifact represents a file stored in the object storage system.
 type Artifact struct {
-	ID          string         `json:"id"`
-	ClientID    string         `json:"client_id"`
-	CoachID     string         `json:"coach_id"`
-	FileName    string         `json:"file_name"`
-	FileType    string         `json:"file_type"`
-	FileSize    int64          `json:"file_size"`
-	StorageKey  string         `json:"storage_key"`
-	Type        ArtifactType   `json:"type"`
-	Status      ArtifactStatus `json:"status"`
-	ContentType string         `json:"content_type"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID              string          `json:"id"`
+	ClientID        string          `json:"client_id"`
+	CoachID         string          `json:"coach_id"`
+	FileName        string          `json:"file_name"`
+	FileType        string          `json:"file_type"`
+	FileSize        int64           `json:"file_size"`
+	StorageKey      string          `json:"storage_key"`
+	Type            ArtifactType    `json:"type"`
+	Status          ArtifactStatus  `json:"status"`
+	ContentType     string          `json:"content_type"`
+	DocumentSubtype DocumentSubtype `json:"document_subtype,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // ValidateFileExtension checks if the file extension is allowed and returns the artifact type.

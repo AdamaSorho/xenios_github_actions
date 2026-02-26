@@ -31,6 +31,12 @@ const (
 	JobTypeAnalyticsAggregation  JobType = "analytics_aggregation"
 	JobTypeRiskDetection         JobType = "risk_detection"
 	JobTypeAudioCleanup          JobType = "audio_cleanup"
+	JobTypeExtractInBody         JobType = "extract_inbody"
+	JobTypeExtractLabResults     JobType = "extract_lab_results"
+	JobTypeExtractWearable       JobType = "extract_wearable"
+	JobTypeExtractNutrition      JobType = "extract_nutrition"
+	JobTypeTranscribeAudio       JobType = "transcribe_audio"
+	JobTypeClassifyDocument      JobType = "classify_document"
 )
 
 // JobStatus represents the current status of a job.
@@ -84,10 +90,34 @@ func IsValidJobType(jt JobType) bool {
 		JobTypeInsightGeneration,
 		JobTypeAnalyticsAggregation,
 		JobTypeRiskDetection,
-		JobTypeAudioCleanup:
+		JobTypeAudioCleanup,
+		JobTypeExtractInBody,
+		JobTypeExtractLabResults,
+		JobTypeExtractWearable,
+		JobTypeExtractNutrition,
+		JobTypeTranscribeAudio,
+		JobTypeClassifyDocument:
 		return true
 	}
 	return false
+}
+
+// JobTypeForSubtype maps a DocumentSubtype to the appropriate JobType for extraction.
+func JobTypeForSubtype(subtype DocumentSubtype) JobType {
+	switch subtype {
+	case DocumentSubtypeInBodyPDF:
+		return JobTypeExtractInBody
+	case DocumentSubtypeLabCSV, DocumentSubtypeLabPDF:
+		return JobTypeExtractLabResults
+	case DocumentSubtypeWearableCSV, DocumentSubtypeWearableJSON:
+		return JobTypeExtractWearable
+	case DocumentSubtypeNutritionCSV:
+		return JobTypeExtractNutrition
+	case DocumentSubtypeAudio:
+		return JobTypeTranscribeAudio
+	default:
+		return JobTypeClassifyDocument
+	}
 }
 
 // IsTerminal returns true if the job status is a terminal state (completed, failed, expired).

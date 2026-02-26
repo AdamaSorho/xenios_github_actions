@@ -64,12 +64,14 @@ func defaultUploadHandler() *UploadHandler {
 		&mockConfirmUploadUC{
 			output: &usecase.ConfirmUploadOutput{
 				Artifact: &entities.Artifact{
-					ID:       "art-1",
-					ClientID: "client-1",
-					CoachID:  "coach-1",
-					FileName: "report.pdf",
-					Status:   entities.ArtifactStatusUploaded,
+					ID:              "art-1",
+					ClientID:        "client-1",
+					CoachID:         "coach-1",
+					FileName:        "report.pdf",
+					Status:          entities.ArtifactStatusUploaded,
+					DocumentSubtype: entities.DocumentSubtypeOther,
 				},
+				JobID: "job-1",
 			},
 		},
 		&mockRequestDownloadUC{
@@ -184,7 +186,57 @@ func TestUploadHandler_RequestPresignedURL_ValidationError_Returns400(t *testing
 	}
 }
 
+func TestUploadHandler_RequestPresignedURL_WithDocumentSubtype_Success(t *testing.T) {
+	h := defaultUploadHandler()
+
+	body, _ := json.Marshal(PresignRequest{
+		FileName:        "scan.pdf",
+		FileSize:        1024,
+		ContentType:     "application/pdf",
+		ClientID:        "client-1",
+		DocumentSubtype: "inbody_pdf",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/uploads/presign", bytes.NewReader(body))
+	req = withAuth(req)
+
+	h.RequestPresignedURL(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+}
+
 // --- ConfirmUpload tests ---
+
+func TestUploadHandler_ConfirmUpload_Success_IncludesJobID(t *testing.T) {
+	h := defaultUploadHandler()
+
+	r := chi.NewRouter()
+	r.Post("/api/v1/uploads/{artifactID}/confirm", h.ConfirmUpload)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/uploads/art-1/confirm", nil)
+	req = withAuth(req)
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	var resp usecase.ConfirmUploadOutput
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.JobID == "" {
+		t.Error("expected non-empty job_id in response")
+	}
+	if resp.Artifact.DocumentSubtype != entities.DocumentSubtypeOther {
+		t.Errorf("expected document_subtype %q, got %q", entities.DocumentSubtypeOther, resp.Artifact.DocumentSubtype)
+	}
+}
 
 func TestUploadHandler_ConfirmUpload_Success(t *testing.T) {
 	h := defaultUploadHandler()

@@ -230,3 +230,100 @@ func TestAllowedFileExtensions_AllTypesPresent(t *testing.T) {
 		}
 	}
 }
+
+// --- DocumentSubtype tests ---
+
+func TestIsValidDocumentSubtype_ValidSubtypes_ReturnsTrue(t *testing.T) {
+	subtypes := []DocumentSubtype{
+		DocumentSubtypeInBodyPDF,
+		DocumentSubtypeLabCSV,
+		DocumentSubtypeLabPDF,
+		DocumentSubtypeWearableCSV,
+		DocumentSubtypeWearableJSON,
+		DocumentSubtypeNutritionCSV,
+		DocumentSubtypeAudio,
+		DocumentSubtypeOther,
+	}
+	for _, s := range subtypes {
+		if !IsValidDocumentSubtype(s) {
+			t.Errorf("expected %q to be valid", s)
+		}
+	}
+}
+
+func TestIsValidDocumentSubtype_InvalidSubtype_ReturnsFalse(t *testing.T) {
+	if IsValidDocumentSubtype("invalid_type") {
+		t.Error("expected 'invalid_type' to be invalid")
+	}
+	if IsValidDocumentSubtype("") {
+		t.Error("expected empty string to be invalid")
+	}
+}
+
+// --- ClassifyDocument tests ---
+
+func TestClassifyDocument_ValidHint_ReturnsHint(t *testing.T) {
+	result := ClassifyDocument(DocumentSubtypeInBodyPDF, "scan.pdf", "application/pdf")
+	if result != DocumentSubtypeInBodyPDF {
+		t.Errorf("expected %q, got %q", DocumentSubtypeInBodyPDF, result)
+	}
+}
+
+func TestClassifyDocument_HintOverridesExtension(t *testing.T) {
+	result := ClassifyDocument(DocumentSubtypeLabCSV, "data.csv", "text/csv")
+	if result != DocumentSubtypeLabCSV {
+		t.Errorf("expected %q, got %q", DocumentSubtypeLabCSV, result)
+	}
+}
+
+func TestClassifyDocument_InvalidHint_FallsBackToExtension(t *testing.T) {
+	result := ClassifyDocument("invalid_hint", "recording.mp3", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %q, got %q", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_AudioExt_ReturnsAudio(t *testing.T) {
+	tests := []struct {
+		fileName    string
+		contentType string
+	}{
+		{"recording.mp3", "audio/mpeg"},
+		{"session.wav", "audio/wav"},
+		{"voice.aac", "audio/aac"},
+	}
+	for _, tc := range tests {
+		result := ClassifyDocument("", tc.fileName, tc.contentType)
+		if result != DocumentSubtypeAudio {
+			t.Errorf("expected %q for %s, got %q", DocumentSubtypeAudio, tc.fileName, result)
+		}
+	}
+}
+
+func TestClassifyDocument_NoHint_AudioContentType_ReturnsAudio(t *testing.T) {
+	result := ClassifyDocument("", "file", "audio/mpeg")
+	if result != DocumentSubtypeAudio {
+		t.Errorf("expected %q, got %q", DocumentSubtypeAudio, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_PDF_ReturnsOther(t *testing.T) {
+	result := ClassifyDocument("", "report.pdf", "application/pdf")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocument_NoHint_CSV_ReturnsOther(t *testing.T) {
+	result := ClassifyDocument("", "data.csv", "text/csv")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}
+
+func TestClassifyDocument_EmptyHint_EmptyFileName_ReturnsOther(t *testing.T) {
+	result := ClassifyDocument("", "", "")
+	if result != DocumentSubtypeOther {
+		t.Errorf("expected %q, got %q", DocumentSubtypeOther, result)
+	}
+}

@@ -68,20 +68,52 @@ var AllowedContentTypes = map[string]ArtifactType{
 	"image/png":        ArtifactTypeImage,
 }
 
+// DocumentSubtype classifies the specific kind of document for extraction routing.
+type DocumentSubtype string
+
+const (
+	DocumentSubtypeInBodyPDF    DocumentSubtype = "inbody_pdf"
+	DocumentSubtypeLabCSV      DocumentSubtype = "lab_csv"
+	DocumentSubtypeLabPDF      DocumentSubtype = "lab_pdf"
+	DocumentSubtypeWearableCSV DocumentSubtype = "wearable_csv"
+	DocumentSubtypeWearableJSON DocumentSubtype = "wearable_json"
+	DocumentSubtypeNutritionCSV DocumentSubtype = "nutrition_csv"
+	DocumentSubtypeAudio       DocumentSubtype = "audio"
+	DocumentSubtypeOther       DocumentSubtype = "other"
+)
+
+// ValidDocumentSubtypes is the set of all recognized document subtypes.
+var ValidDocumentSubtypes = map[DocumentSubtype]bool{
+	DocumentSubtypeInBodyPDF:     true,
+	DocumentSubtypeLabCSV:        true,
+	DocumentSubtypeLabPDF:        true,
+	DocumentSubtypeWearableCSV:   true,
+	DocumentSubtypeWearableJSON:  true,
+	DocumentSubtypeNutritionCSV:  true,
+	DocumentSubtypeAudio:         true,
+	DocumentSubtypeOther:         true,
+}
+
+// IsValidDocumentSubtype returns true if the given subtype is recognized.
+func IsValidDocumentSubtype(s DocumentSubtype) bool {
+	return ValidDocumentSubtypes[s]
+}
+
 // Artifact represents a file stored in the object storage system.
 type Artifact struct {
-	ID          string         `json:"id"`
-	ClientID    string         `json:"client_id"`
-	CoachID     string         `json:"coach_id"`
-	FileName    string         `json:"file_name"`
-	FileType    string         `json:"file_type"`
-	FileSize    int64          `json:"file_size"`
-	StorageKey  string         `json:"storage_key"`
-	Type        ArtifactType   `json:"type"`
-	Status      ArtifactStatus `json:"status"`
-	ContentType string         `json:"content_type"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID              string          `json:"id"`
+	ClientID        string          `json:"client_id"`
+	CoachID         string          `json:"coach_id"`
+	FileName        string          `json:"file_name"`
+	FileType        string          `json:"file_type"`
+	FileSize        int64           `json:"file_size"`
+	StorageKey      string          `json:"storage_key"`
+	Type            ArtifactType    `json:"type"`
+	Status          ArtifactStatus  `json:"status"`
+	ContentType     string          `json:"content_type"`
+	DocumentSubtype DocumentSubtype `json:"document_subtype,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // ValidateFileExtension checks if the file extension is allowed and returns the artifact type.
@@ -134,4 +166,38 @@ func ValidateFileSize(size int64, artType ArtifactType) error {
 func BuildStorageKey(clientID string, artType ArtifactType, artifactID string, fileName string) string {
 	ext := strings.ToLower(filepath.Ext(fileName))
 	return fmt.Sprintf("%s/%s/%s%s", clientID, artType, artifactID, ext)
+}
+
+// ClassifyDocument determines the DocumentSubtype from an optional hint,
+// file extension, and content type. The hint takes precedence if valid.
+func ClassifyDocument(hint DocumentSubtype, fileName string, contentType string) DocumentSubtype {
+	if hint != "" && IsValidDocumentSubtype(hint) {
+		return hint
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+
+	// Audio files
+	if isAudioExt(ext) || isAudioContentType(ct) {
+		return DocumentSubtypeAudio
+	}
+
+	return DocumentSubtypeOther
+}
+
+func isAudioExt(ext string) bool {
+	switch ext {
+	case ".aac", ".wav", ".mp3":
+		return true
+	}
+	return false
+}
+
+func isAudioContentType(ct string) bool {
+	switch ct {
+	case "audio/aac", "audio/wav", "audio/mpeg":
+		return true
+	}
+	return false
 }

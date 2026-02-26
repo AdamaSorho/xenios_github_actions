@@ -282,6 +282,51 @@ func TestValidationError_ErrorsAs_NonValidationError(t *testing.T) {
 	}
 }
 
+func TestIsValidJobType_NewExtractionTypes_ReturnsTrue(t *testing.T) {
+	newTypes := []JobType{
+		JobTypeExtractInBody,
+		JobTypeExtractLabResults,
+		JobTypeExtractWearable,
+		JobTypeExtractNutrition,
+		JobTypeTranscribeAudio,
+		JobTypeClassifyDocument,
+	}
+	for _, jt := range newTypes {
+		if !IsValidJobType(jt) {
+			t.Errorf("expected %q to be a valid job type", jt)
+		}
+	}
+}
+
+func TestJobTypeForSubtype_AllMappings(t *testing.T) {
+	tests := []struct {
+		subtype  DocumentSubtype
+		expected JobType
+	}{
+		{DocumentSubtypeInBodyPDF, JobTypeExtractInBody},
+		{DocumentSubtypeLabCSV, JobTypeExtractLabResults},
+		{DocumentSubtypeLabPDF, JobTypeExtractLabResults},
+		{DocumentSubtypeWearableCSV, JobTypeExtractWearable},
+		{DocumentSubtypeWearableJSON, JobTypeExtractWearable},
+		{DocumentSubtypeNutritionCSV, JobTypeExtractNutrition},
+		{DocumentSubtypeAudio, JobTypeTranscribeAudio},
+		{DocumentSubtypeOther, JobTypeClassifyDocument},
+	}
+	for _, tc := range tests {
+		got := JobTypeForSubtype(tc.subtype)
+		if got != tc.expected {
+			t.Errorf("JobTypeForSubtype(%q) = %q, want %q", tc.subtype, got, tc.expected)
+		}
+	}
+}
+
+func TestJobTypeForSubtype_UnknownSubtype_ReturnsClassifyDocument(t *testing.T) {
+	got := JobTypeForSubtype(DocumentSubtype("unknown"))
+	if got != JobTypeClassifyDocument {
+		t.Errorf("expected %q for unknown subtype, got %q", JobTypeClassifyDocument, got)
+	}
+}
+
 func TestJobStatusConstants_Values(t *testing.T) {
 	tests := []struct {
 		status   JobStatus

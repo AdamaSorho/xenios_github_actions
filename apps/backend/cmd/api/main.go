@@ -251,9 +251,10 @@ func setupUploadHandler() *handler.UploadHandler {
 	artifactRepo := repository.NewInMemoryArtifactRepository()
 	fileStorage := repository.NewInMemoryFileStorage()
 	auditRepo := repository.NewInMemoryAuditRepository()
+	jobQueue := repository.NewInMemoryJobQueue()
 
 	requestUploadUC := usecase.NewRequestUploadUseCase(artifactRepo, fileStorage, auditRepo)
-	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo)
+	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo, jobQueue)
 	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
 
 	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)

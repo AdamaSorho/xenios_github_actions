@@ -31,6 +31,7 @@ const (
 	JobTypeAnalyticsAggregation  JobType = "analytics_aggregation"
 	JobTypeRiskDetection         JobType = "risk_detection"
 	JobTypeAudioCleanup          JobType = "audio_cleanup"
+	JobTypeExtractWearable       JobType = "extract_wearable"
 )
 
 // JobStatus represents the current status of a job.
@@ -84,7 +85,8 @@ func IsValidJobType(jt JobType) bool {
 		JobTypeInsightGeneration,
 		JobTypeAnalyticsAggregation,
 		JobTypeRiskDetection,
-		JobTypeAudioCleanup:
+		JobTypeAudioCleanup,
+		JobTypeExtractWearable:
 		return true
 	}
 	return false

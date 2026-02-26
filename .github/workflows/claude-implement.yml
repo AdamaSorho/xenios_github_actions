@@ -51,34 +51,77 @@ jobs:
 
             You are implementing a feature for the Xenios platform.
 
-            ## Instructions
+            ## Implementation Steps (follow in order)
 
-            1. READ the issue description thoroughly
+            1. READ the issue description and `docs/spec-template.md` thoroughly
             2. IDENTIFY which app(s) need changes (backend, web, mobile)
             3. FOLLOW Test-Driven Development:
                - Write failing tests FIRST
                - Implement minimum code to pass tests
                - Refactor while keeping tests green
-            4. ENFORCE Clean Architecture:
-               - Domain layer: entities and repository interfaces
-               - Application layer: use cases only
-               - Infrastructure: external implementations
-               - Presentation: UI/API handlers
-            5. CREATE a PR with:
-               - Clear description of changes
-               - Test coverage report
-               - Screenshots/recordings for UI changes
-               - **Mermaid sequence diagram** showing the flow of the implementation
+            4. ENFORCE Clean Architecture (see rules below)
+            5. RUN the pre-PR validation script and fix ALL failures before creating the PR
+            6. CREATE a PR only after the validation script passes with 0 failures
+
+            ## MANDATORY: Pre-PR Validation (do this before creating the PR)
+
+            You MUST run this script and fix every failure before opening the PR:
+            ```bash
+            ./scripts/pre-pr-check.sh
+            ```
+
+            This script checks:
+            - Compilation (go build)
+            - Clean Architecture violations
+            - Migration number conflicts
+            - Test pass/fail
+            - Coverage ≥ 80%
+
+            **DO NOT create the PR if this script reports any failures.**
+            Fix the issues, re-run the script, and only proceed when output shows 0 failures.
+
+            ## MANDATORY: Migration Number Check
+
+            If your feature requires new database migrations, you MUST:
+            1. Check the latest existing migration number FIRST:
+               ```bash
+               ls apps/backend/migrations/*.up.sql | sort | tail -1
+               ```
+            2. Use the NEXT sequential number (e.g., if latest is 000011, use 000012)
+            3. NEVER guess the migration number — always check
+
+            Multiple builders run in parallel and will all pick the same number if they
+            don't check. The pre-PR script will catch this, but checking first saves time.
+
+            ## MANDATORY: Coverage Verification
+
+            After writing tests, verify coverage before creating the PR:
+            ```bash
+            cd apps/backend
+            go test -coverprofile=coverage.out ./...
+            go tool cover -func=coverage.out | grep "^total:"
+            ```
+
+            Coverage MUST be ≥ 80% for all new code. If below 80%:
+            - Identify uncovered lines: `go tool cover -html=coverage.out`
+            - Add tests for uncovered error paths, edge cases, and boundary conditions
+            - Focus on: error returns, nil checks, invalid input handling
+
+            ## MANDATORY: No Code Duplication (SonarCloud enforces ≤ 3%)
+
+            SonarCloud will FAIL the PR if new code duplication exceeds 3%.
+            Before creating the PR, review your code for:
+            - Repeated validation logic → extract into a shared `validate*()` helper
+            - Repeated error wrapping → extract into a shared `newError()` helper
+            - Identical handler constructors → embed a base struct or use a factory
+            - Repeated audit logging calls → extract into a shared `logEvent()` helper
+            - Copy-pasted HTTP response patterns → extract into `respondJSON()` / `respondError()`
+
+            Rule of thumb: if you wrote the same block of code 2+ times, extract it.
 
             ## Sequence Diagram Requirements
 
-            Every PR MUST include a Mermaid sequence diagram in the description.
-            The diagram should show:
-            - Key actors/components involved (User, Mobile/Web, Backend, Database, External APIs)
-            - The flow of requests and responses
-            - Important decision points or branching logic
-
-            Example format:
+            Every PR MUST include a Mermaid sequence diagram in the description:
             ```mermaid
             sequenceDiagram
                 participant U as User
@@ -100,12 +143,6 @@ jobs:
                 end
             ```
 
-            Guidelines:
-            - Use participant aliases for readability (U, M, W, B, DB)
-            - Show error/alternate flows with alt/else blocks
-            - Include async operations with activate/deactivate if relevant
-            - Keep diagrams focused on the feature being implemented
-
             ## Architecture Rules
 
             - Dependencies flow INWARD only
@@ -126,9 +163,10 @@ jobs:
 
             ## TDD Rules
 
-            - Every new function needs a test
+            - Write tests BEFORE implementation (red → green → refactor)
+            - Test naming: `Test<Function>_<Scenario>_<Expected>`
             - Test files: `*_test.go` (Go), `*.test.ts` (TypeScript)
-            - Minimum 80% coverage for new code
+            - Minimum 80% coverage — verified with coverage tool, not estimated
 
             ## Version Verification (CRITICAL)
 
@@ -136,9 +174,7 @@ jobs:
             Before using ANY specific version:
             1. Check existing project files (package.json, go.mod, .nvmrc)
             2. Use WebSearch to verify current LTS/stable versions
-            3. Check official docs (nodejs.org, go.dev, npmjs.com)
-            4. If uncertain, make a reasonable choice using the latest stable/LTS
-               version and document your assumption in the PR description
+            3. If uncertain, document your assumption in the PR description
 
             ## IMPORTANT: Non-Interactive Mode
 

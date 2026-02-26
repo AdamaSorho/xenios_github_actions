@@ -249,6 +249,7 @@ apps/backend/migrations/
 6. **One concern per migration** - Don't mix table creation with data seeding
 7. **Parameterized** - Never interpolate user values into migration SQL
 8. **Applied via CI/CD** - The `migrate-db.yml` workflow handles staging and production
+9. **Check for conflicts before creating** - ALWAYS run `ls apps/backend/migrations/*.up.sql | sort | tail -1` to find the latest migration number on `main`, then use the next available number. Never guess — multiple builders working in parallel will pick the same number if they don't check. The pre-PR script (`./scripts/pre-pr-check.sh`) will catch this conflict automatically.
 
 ### Migration Examples
 

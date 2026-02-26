@@ -93,7 +93,34 @@ check_backend() {
     return
   fi
 
-  # 2. Clean Architecture checks (mirrors tdd-gate.yml)
+  # 2. Migration conflict check
+  info "Checking for migration number conflicts..."
+  BASE_BRANCH="${BASE_BRANCH:-main}"
+  # Get migration numbers already on main
+  MAIN_MIGRATIONS=$(git show "origin/$BASE_BRANCH:apps/backend/migrations/" 2>/dev/null | grep -E "^[0-9]+" | grep "\.up\.sql" | sed 's/_.*//') || true
+  # Get new migration numbers in this branch
+  NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "origin/$BASE_BRANCH" -- "apps/backend/migrations/*.up.sql" 2>/dev/null | xargs -I{} basename {} | sed 's/_.*//') || true
+  MIGRATION_CONFLICTS=0
+  for num in $NEW_MIGRATIONS; do
+    if echo "$MAIN_MIGRATIONS" | grep -q "^$num$"; then
+      fail "Migration conflict: migration $num already exists on $BASE_BRANCH — choose a higher number"
+      MIGRATION_CONFLICTS=$((MIGRATION_CONFLICTS + 1))
+    fi
+  done
+  # Get next safe migration number
+  LATEST=$(ls apps/backend/migrations/*.up.sql 2>/dev/null | sort | tail -1 | xargs basename | cut -d_ -f1)
+  if [ -n "$LATEST" ]; then
+    NEXT=$(printf "%06d" $((10#$LATEST + 1)))
+    if [ "$MIGRATION_CONFLICTS" -eq 0 ] && [ -n "$NEW_MIGRATIONS" ]; then
+      pass "Migrations (next available: $NEXT)"
+    elif [ "$MIGRATION_CONFLICTS" -eq 0 ] && [ -z "$NEW_MIGRATIONS" ]; then
+      pass "No new migrations"
+    else
+      info "Next available migration number: $NEXT"
+    fi
+  fi
+
+  # 3. Clean Architecture checks (mirrors tdd-gate.yml)
   info "Checking Clean Architecture..."
   ARCH_VIOLATIONS=0
 

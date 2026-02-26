@@ -192,6 +192,72 @@ func TestInMemoryMeasurementRepository_FindLatestByClientID(t *testing.T) {
 	}
 }
 
+func TestInMemoryMeasurementRepository_FindLatestByClientID_EmptyRepo(t *testing.T) {
+	repo := NewInMemoryMeasurementRepository()
+	ctx := context.Background()
+
+	result, err := repo.FindLatestByClientID(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected 0 results, got %d", len(result))
+	}
+}
+
+func TestInMemoryMeasurementRepository_FindByClientID_OffsetBeyondTotal(t *testing.T) {
+	repo := NewInMemoryMeasurementRepository()
+	ctx := context.Background()
+
+	now := time.Now()
+	_, _ = repo.Create(ctx, &entities.Measurement{ClientID: "client-1", Type: "weight", Value: 185, Unit: "lbs", MeasuredAt: now, RecordedBy: "coach-1"})
+
+	result, total, err := repo.FindByClientID(ctx, entities.MeasurementFilter{
+		ClientID: "client-1",
+		Limit:    20,
+		Offset:   100,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("expected total 1, got %d", total)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected 0 results when offset beyond total, got %d", len(result))
+	}
+}
+
+func TestInMemoryMeasurementRepository_FindByClientID_LimitExceedsRemaining(t *testing.T) {
+	repo := NewInMemoryMeasurementRepository()
+	ctx := context.Background()
+
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		_, _ = repo.Create(ctx, &entities.Measurement{
+			ClientID: "client-1", Type: "weight",
+			Value: float64(180 + i), Unit: "lbs",
+			MeasuredAt: now.Add(time.Duration(i) * time.Hour),
+			RecordedBy: "coach-1",
+		})
+	}
+
+	result, total, err := repo.FindByClientID(ctx, entities.MeasurementFilter{
+		ClientID: "client-1",
+		Limit:    100,
+		Offset:   1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("expected total 3, got %d", total)
+	}
+	if len(result) != 2 {
+		t.Errorf("expected 2 results (3 total - 1 offset), got %d", len(result))
+	}
+}
+
 func TestInMemoryMeasurementRepository_FindByType(t *testing.T) {
 	repo := NewInMemoryMeasurementRepository()
 	ctx := context.Background()

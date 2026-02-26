@@ -281,6 +281,87 @@ func TestGetMetricFloat_Invalid(t *testing.T) {
 	}
 }
 
+func TestGetMetricFloat_Int64(t *testing.T) {
+	metrics := map[string]interface{}{"hrv": int64(45)}
+	v, ok := getMetricFloat(metrics, "hrv")
+	if !ok || v != 45.0 {
+		t.Errorf("expected 45.0, got %f ok=%v", v, ok)
+	}
+}
+
+func TestGetClientProfileSummary_CoachClientRepoError(t *testing.T) {
+	repoErr := errors.New("coach client lookup failed")
+	measurementRepo := &mockMeasurementRepo{}
+	wearableRepo := &mockWearableRepo{}
+	ccRepo := &mockCoachClientRepo{
+		findByCoachAndClient: func(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error) {
+			return nil, repoErr
+		},
+	}
+	auditRepo := &mockAuditRepo{}
+
+	uc := NewGetClientProfileSummaryUseCase(measurementRepo, wearableRepo, ccRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GetClientProfileSummaryInput{
+		CoachID:  "coach-1",
+		ClientID: "client-1",
+	})
+
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected coach client repo error to propagate, got %v", err)
+	}
+}
+
+func TestBuildProfileSummary_NutritionTypes(t *testing.T) {
+	now := time.Now()
+	measurements := []*entities.Measurement{
+		{Type: "calories", Value: 2100, Unit: "kcal", MeasuredAt: now},
+		{Type: "protein", Value: 165, Unit: "g", MeasuredAt: now},
+	}
+	output := buildProfileSummary(measurements, nil)
+	if output.Nutrition.AvgCalories7d != 2100 {
+		t.Errorf("expected avg calories 2100, got %f", output.Nutrition.AvgCalories7d)
+	}
+	if output.Nutrition.AvgProtein7d != 165 {
+		t.Errorf("expected avg protein 165, got %f", output.Nutrition.AvgProtein7d)
+	}
+}
+
+func TestBuildProfileSummary_LabNoFlag(t *testing.T) {
+	now := time.Now()
+	measurements := []*entities.Measurement{
+		{Type: "ldl_cholesterol", Value: 100, Unit: "mg/dL", MeasuredAt: now},
+	}
+	output := buildProfileSummary(measurements, nil)
+	if output.Labs.FlaggedCount != 0 {
+		t.Errorf("expected 0 flagged, got %d", output.Labs.FlaggedCount)
+	}
+	if len(output.Labs.Markers) != 1 {
+		t.Fatalf("expected 1 marker, got %d", len(output.Labs.Markers))
+	}
+	if output.Labs.Markers[0].Flag != "" {
+		t.Errorf("expected empty flag, got %q", output.Labs.Markers[0].Flag)
+	}
+}
+
+func TestBuildProfileSummary_WearableMissingMetrics(t *testing.T) {
+	summaries := []*entities.WearableSummary{
+		{Source: "whoop", Metrics: map[string]interface{}{}},
+	}
+	output := buildProfileSummary(nil, summaries)
+	if output.Wearable == nil {
+		t.Fatal("expected non-nil wearable")
+	}
+	if output.Wearable.AvgHrv7d != 0 {
+		t.Errorf("expected avg HRV 0, got %f", output.Wearable.AvgHrv7d)
+	}
+	if output.Wearable.AvgSleep7d != 0 {
+		t.Errorf("expected avg sleep 0, got %f", output.Wearable.AvgSleep7d)
+	}
+	if output.Wearable.AvgRecovery7d != 0 {
+		t.Errorf("expected avg recovery 0, got %f", output.Wearable.AvgRecovery7d)
+	}
+}
+
 func strPtr(s string) *string {
 	return &s
 }

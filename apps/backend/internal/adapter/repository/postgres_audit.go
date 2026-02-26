@@ -38,81 +38,60 @@ func (r *PostgresAuditRepository) LogEvent(ctx context.Context, event *entities.
 	return nil
 }
 
-// auditQueryBuilder constructs parameterized SQL for querying the events_audit table.
-// All filter values are passed as parameterized arguments ($1, $2, ...) to prevent injection.
-type auditQueryBuilder struct {
-	conditions []string
-	args       []interface{}
-	paramIdx   int
+// auditQueryHelper wraps queryBuilder with audit-specific SQL generation.
+type auditQueryHelper struct {
+	*queryBuilder
 }
 
-func newAuditQueryBuilder() *auditQueryBuilder {
-	return &auditQueryBuilder{paramIdx: 1}
+func newAuditQueryHelper() *auditQueryHelper {
+	return &auditQueryHelper{queryBuilder: newQueryBuilder()}
 }
 
-func (b *auditQueryBuilder) addCondition(column string, value interface{}) {
-	b.conditions = append(b.conditions, fmt.Sprintf("%s = $%d", column, b.paramIdx))
-	b.args = append(b.args, value)
-	b.paramIdx++
-}
-
-func (b *auditQueryBuilder) addTimeCondition(column, op string, value interface{}) {
-	b.conditions = append(b.conditions, fmt.Sprintf("%s %s $%d", column, op, b.paramIdx))
-	b.args = append(b.args, value)
-	b.paramIdx++
-}
-
-func (b *auditQueryBuilder) whereClause() string {
-	if len(b.conditions) == 0 {
-		return ""
-	}
-	return " WHERE " + strings.Join(b.conditions, " AND ")
-}
-
-func (b *auditQueryBuilder) countSQL() string {
+func (h *auditQueryHelper) countSQL() string {
 	var sb strings.Builder
 	sb.WriteString("SELECT COUNT(*) FROM events_audit")
-	sb.WriteString(b.whereClause())
+	sb.WriteString(h.whereClause())
 	return sb.String()
 }
 
-func (b *auditQueryBuilder) selectSQL() string {
+func (h *auditQueryHelper) selectSQL() string {
 	var sb strings.Builder
 	sb.WriteString("SELECT id, actor_id, action, entity_type, entity_id, metadata,")
 	sb.WriteString(" COALESCE(ip_address::TEXT, ''), COALESCE(user_agent, ''), created_at")
 	sb.WriteString(" FROM events_audit")
-	sb.WriteString(b.whereClause())
+	sb.WriteString(h.whereClause())
 	sb.WriteString(" ORDER BY created_at DESC")
-	sb.WriteString(fmt.Sprintf(" LIMIT $%d OFFSET $%d", b.paramIdx, b.paramIdx+1))
+	idx := h.nextParamIdx()
+	sb.WriteString(fmt.Sprintf(" LIMIT $%d OFFSET $%d", idx, idx+1))
 	return sb.String()
 }
 
 // Query retrieves audit events matching the given filter.
 func (r *PostgresAuditRepository) Query(ctx context.Context, filter entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error) {
-	qb := newAuditQueryBuilder()
+	qh := newAuditQueryHelper()
 
 	if filter.ActorID != "" {
-		qb.addCondition("actor_id", filter.ActorID)
+		qh.addCondition("actor_id", filter.ActorID)
 	}
 	if filter.Action != "" {
-		qb.addCondition("action", filter.Action)
+		qh.addCondition("action", filter.Action)
 	}
 	if filter.EntityType != "" {
-		qb.addCondition("entity_type", filter.EntityType)
+		qh.addCondition("entity_type", filter.EntityType)
 	}
 	if filter.EntityID != "" {
-		qb.addCondition("entity_id", filter.EntityID)
+		qh.addCondition("entity_id", filter.EntityID)
 	}
 	if filter.From != nil {
-		qb.addTimeCondition("created_at", ">=", *filter.From)
+		qh.addTimeCondition("created_at", ">=", *filter.From)
 	}
 	if filter.To != nil {
-		qb.addTimeCondition("created_at", "<=", *filter.To)
+		qh.addTimeCondition("created_at", "<=", *filter.To)
 	}
 
 	// Count total matching records
 	var total int
-	if err := r.db.QueryRow(ctx, qb.countSQL(), qb.args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, qh.countSQL(), qh.args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count audit events: %w", err)
 	}
 
@@ -126,8 +105,8 @@ func (r *PostgresAuditRepository) Query(ctx context.Context, filter entities.Aud
 		offset = 0
 	}
 
-	args := append(qb.args, limit, offset)
-	rows, err := r.db.Query(ctx, qb.selectSQL(), args...)
+	args := append(qh.args, limit, offset)
+	rows, err := r.db.Query(ctx, qh.selectSQL(), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query audit events: %w", err)
 	}

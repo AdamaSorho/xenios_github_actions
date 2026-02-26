@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xenios/backend/internal/domain/entities"
@@ -34,39 +33,9 @@ func (r *PostgresMeasurementRepository) Create(ctx context.Context, m *entities.
 	return m, nil
 }
 
-// measurementQueryBuilder constructs parameterized SQL for querying measurements.
-type measurementQueryBuilder struct {
-	conditions []string
-	args       []interface{}
-	paramIdx   int
-}
-
-func newMeasurementQueryBuilder() *measurementQueryBuilder {
-	return &measurementQueryBuilder{paramIdx: 1}
-}
-
-func (b *measurementQueryBuilder) addCondition(column string, value interface{}) {
-	b.conditions = append(b.conditions, fmt.Sprintf("%s = $%d", column, b.paramIdx))
-	b.args = append(b.args, value)
-	b.paramIdx++
-}
-
-func (b *measurementQueryBuilder) addTimeCondition(column, op string, value interface{}) {
-	b.conditions = append(b.conditions, fmt.Sprintf("%s %s $%d", column, op, b.paramIdx))
-	b.args = append(b.args, value)
-	b.paramIdx++
-}
-
-func (b *measurementQueryBuilder) whereClause() string {
-	if len(b.conditions) == 0 {
-		return ""
-	}
-	return " WHERE " + strings.Join(b.conditions, " AND ")
-}
-
 // FindByClientID retrieves measurements with filtering and pagination.
 func (r *PostgresMeasurementRepository) FindByClientID(ctx context.Context, filter entities.MeasurementFilter) ([]*entities.Measurement, int, error) {
-	qb := newMeasurementQueryBuilder()
+	qb := newQueryBuilder()
 
 	qb.addCondition("client_id", filter.ClientID)
 
@@ -97,13 +66,14 @@ func (r *PostgresMeasurementRepository) FindByClientID(ctx context.Context, filt
 		offset = 0
 	}
 
+	idx := qb.nextParamIdx()
 	selectSQL := fmt.Sprintf(
 		`SELECT id, client_id, measurement_type, value, unit, measured_at,
 		        artifact_id, flag, reference_low, reference_high, notes, recorded_by, created_at
 		 FROM measurements%s
 		 ORDER BY measured_at DESC
 		 LIMIT $%d OFFSET $%d`,
-		qb.whereClause(), qb.paramIdx, qb.paramIdx+1,
+		qb.whereClause(), idx, idx+1,
 	)
 
 	args := append(qb.args, limit, offset)

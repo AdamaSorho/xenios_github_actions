@@ -365,3 +365,24 @@ func TestGetClientMeasurements_AuditLogged(t *testing.T) {
 		t.Errorf("expected actor_id 'coach-1', got '%s'", auditRepo.events[0].ActorID)
 	}
 }
+
+func TestGetClientMeasurements_CoachClientRepoError(t *testing.T) {
+	repoErr := errors.New("coach client lookup failed")
+	measurementRepo := &mockMeasurementRepo{}
+	ccRepo := &mockCoachClientRepo{
+		findByCoachAndClient: func(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error) {
+			return nil, repoErr
+		},
+	}
+	auditRepo := &mockAuditRepo{}
+
+	uc := NewGetClientMeasurementsUseCase(measurementRepo, ccRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GetClientMeasurementsInput{
+		CoachID:  "coach-1",
+		ClientID: "client-1",
+	})
+
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected coach client repo error to propagate, got %v", err)
+	}
+}

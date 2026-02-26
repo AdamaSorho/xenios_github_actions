@@ -133,3 +133,24 @@ func TestIsValidationError_False(t *testing.T) {
 		t.Error("expected false for non-ValidationError")
 	}
 }
+
+func TestAuthorizationError_Error(t *testing.T) {
+	err := &AuthorizationError{Message: "access denied"}
+	if err.Error() != "access denied" {
+		t.Errorf("expected 'access denied', got %s", err.Error())
+	}
+}
+
+func TestIsAuthorizationError_True(t *testing.T) {
+	err := &AuthorizationError{Message: "denied"}
+	if !IsAuthorizationError(err) {
+		t.Error("expected true for AuthorizationError")
+	}
+}
+
+func TestIsAuthorizationError_False(t *testing.T) {
+	err := errors.New("not an authorization error")
+	if IsAuthorizationError(err) {
+		t.Error("expected false for non-AuthorizationError")
+	}
+}

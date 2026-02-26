@@ -123,6 +123,56 @@ func TestInMemoryCoachClientRepository_ListByCoachID_NoResults(t *testing.T) {
 	}
 }
 
+func TestInMemoryCoachClientRepository_FindByCoachAndClient_Found(t *testing.T) {
+	repo := NewInMemoryCoachClientRepository()
+	ctx := context.Background()
+
+	_, _ = repo.Create(ctx, "coach-1", "client-1")
+	_, _ = repo.Create(ctx, "coach-1", "client-2")
+	_, _ = repo.Create(ctx, "coach-2", "client-3")
+
+	result, err := repo.FindByCoachAndClient(ctx, "coach-1", "client-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.CoachID != "coach-1" {
+		t.Errorf("expected CoachID coach-1, got %s", result.CoachID)
+	}
+	if result.ClientID != "client-1" {
+		t.Errorf("expected ClientID client-1, got %s", result.ClientID)
+	}
+}
+
+func TestInMemoryCoachClientRepository_FindByCoachAndClient_NotFound(t *testing.T) {
+	repo := NewInMemoryCoachClientRepository()
+	ctx := context.Background()
+
+	_, _ = repo.Create(ctx, "coach-1", "client-1")
+
+	result, err := repo.FindByCoachAndClient(ctx, "coach-1", "client-999")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != nil {
+		t.Error("expected nil result for non-existent relationship")
+	}
+}
+
+func TestInMemoryCoachClientRepository_FindByCoachAndClient_Empty(t *testing.T) {
+	repo := NewInMemoryCoachClientRepository()
+
+	result, err := repo.FindByCoachAndClient(context.Background(), "coach-1", "client-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != nil {
+		t.Error("expected nil result from empty repo")
+	}
+}
+
 func TestInMemoryCoachClientRepository_ConcurrentAccess(t *testing.T) {
 	repo := NewInMemoryCoachClientRepository()
 	ctx := context.Background()

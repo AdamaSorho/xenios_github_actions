@@ -504,6 +504,148 @@ func TestMeasurementHandler_ProfileSummary_InternalError(t *testing.T) {
 
 // === handleUseCaseError Tests ===
 
+func TestMeasurementHandler_ListMeasurements_RFC3339Dates(t *testing.T) {
+	h, getMeasUC, _, _, _ := newMeasurementHandler()
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/measurements?from=2026-01-15T10:00:00Z&to=2026-02-15T18:00:00Z", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.ListMeasurements(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+	if getMeasUC.input.From == nil {
+		t.Fatal("expected from date to be set")
+	}
+	if getMeasUC.input.To == nil {
+		t.Fatal("expected to date to be set")
+	}
+	expectedFrom := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
+	if !getMeasUC.input.From.Equal(expectedFrom) {
+		t.Errorf("expected from %v, got %v", expectedFrom, *getMeasUC.input.From)
+	}
+	expectedTo := time.Date(2026, 2, 15, 18, 0, 0, 0, time.UTC)
+	if !getMeasUC.input.To.Equal(expectedTo) {
+		t.Errorf("expected to %v, got %v", expectedTo, *getMeasUC.input.To)
+	}
+}
+
+func TestMeasurementHandler_ListMeasurements_ValidationError(t *testing.T) {
+	h, getMeasUC, _, _, _ := newMeasurementHandler()
+	getMeasUC.err = &usecase.ValidationError{Message: "client_id is required"}
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/measurements", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.ListMeasurements(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+	var errResp ErrorResponse
+	_ = json.NewDecoder(rec.Body).Decode(&errResp)
+	if errResp.Code != "VALIDATION_ERROR" {
+		t.Errorf("expected code VALIDATION_ERROR, got %s", errResp.Code)
+	}
+}
+
+func TestMeasurementHandler_LatestMeasurements_InternalError(t *testing.T) {
+	h, _, getLatestUC, _, _ := newMeasurementHandler()
+	getLatestUC.err = errors.New("database unavailable")
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/measurements/latest", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.LatestMeasurements(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rec.Code)
+	}
+	var errResp ErrorResponse
+	_ = json.NewDecoder(rec.Body).Decode(&errResp)
+	if errResp.Error == "database unavailable" {
+		t.Error("internal error message should not be leaked to client")
+	}
+}
+
+func TestMeasurementHandler_LatestMeasurements_ValidationError(t *testing.T) {
+	h, _, getLatestUC, _, _ := newMeasurementHandler()
+	getLatestUC.err = &usecase.ValidationError{Message: "coach_id is required"}
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/measurements/latest", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.LatestMeasurements(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestMeasurementHandler_WearableSummaries_MissingClientID(t *testing.T) {
+	h, _, _, _, _ := newMeasurementHandler()
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients//wearable-summaries", "coach-1")
+	req = setChiParam(req, "clientID", "")
+	rec := httptest.NewRecorder()
+
+	h.WearableSummaries(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestMeasurementHandler_WearableSummaries_InternalError(t *testing.T) {
+	h, _, _, getWearableUC, _ := newMeasurementHandler()
+	getWearableUC.err = errors.New("database unavailable")
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/wearable-summaries", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.WearableSummaries(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rec.Code)
+	}
+}
+
+func TestMeasurementHandler_WearableSummaries_ValidationError(t *testing.T) {
+	h, _, _, getWearableUC, _ := newMeasurementHandler()
+	getWearableUC.err = &usecase.ValidationError{Message: "coach_id is required"}
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/wearable-summaries", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.WearableSummaries(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestMeasurementHandler_ProfileSummary_ValidationError(t *testing.T) {
+	h, _, _, _, getProfileUC := newMeasurementHandler()
+	getProfileUC.err = &usecase.ValidationError{Message: "coach_id is required"}
+
+	req := newAuthenticatedRequest("GET", "/api/v1/clients/client-1/profile-summary", "coach-1")
+	req = setChiParam(req, "clientID", "client-1")
+	rec := httptest.NewRecorder()
+
+	h.ProfileSummary(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+}
+
 func TestHandleUseCaseError_ValidationError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handleUseCaseError(rec, &usecase.ValidationError{Message: "bad input"})

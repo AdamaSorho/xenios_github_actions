@@ -211,3 +211,24 @@ func TestGetWearableSummaries_AuditLogged(t *testing.T) {
 		t.Errorf("expected action 'phi.wearable_data_accessed', got '%s'", auditRepo.events[0].Action)
 	}
 }
+
+func TestGetWearableSummaries_CoachClientRepoError(t *testing.T) {
+	repoErr := errors.New("coach client lookup failed")
+	wearableRepo := &mockWearableRepo{}
+	ccRepo := &mockCoachClientRepo{
+		findByCoachAndClient: func(ctx context.Context, coachID, clientID string) (*entities.CoachClient, error) {
+			return nil, repoErr
+		},
+	}
+	auditRepo := &mockAuditRepo{}
+
+	uc := NewGetWearableSummariesUseCase(wearableRepo, ccRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GetWearableSummariesInput{
+		CoachID:  "coach-1",
+		ClientID: "client-1",
+	})
+
+	if !errors.Is(err, repoErr) {
+		t.Errorf("expected coach client repo error to propagate, got %v", err)
+	}
+}

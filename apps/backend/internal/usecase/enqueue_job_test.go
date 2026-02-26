@@ -162,6 +162,7 @@ func TestEnqueueJobUseCase_Execute_AllJobTypes_Succeed(t *testing.T) {
 		entities.JobTypeAnalyticsAggregation,
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
+		entities.JobTypeExtractInBody,
 	}
 
 	for _, jt := range jobTypes {

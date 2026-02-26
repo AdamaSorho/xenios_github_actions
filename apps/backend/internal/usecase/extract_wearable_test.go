@@ -413,6 +413,175 @@ func TestExtractWearable_StoresWearableSummary(t *testing.T) {
 	}
 }
 
+func TestExtractWearable_UpsertBatchError_ReturnsError(t *testing.T) {
+	measurementRepo := &failingMeasurementRepo{
+		upsertErr: errors.New("db write failed"),
+	}
+	summaryRepo := repository.NewInMemoryWearableSummaryRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	uc := NewExtractWearableUseCase(measurementRepo, summaryRepo, auditRepo)
+
+	parser := &mockWearableParser{
+		source: entities.WearableSourceWhoop,
+		parseFunc: func(reader io.Reader, clientID, recordedBy string) ([]entities.Measurement, error) {
+			return createTestMeasurements("client-1", "coach-1"), nil
+		},
+	}
+
+	input := ExtractWearableInput{
+		ClientID:   "client-1",
+		CoachID:    "coach-1",
+		Source:     entities.WearableSourceWhoop,
+		Reader:     strings.NewReader("data"),
+		Parser:     parser,
+		ArtifactID: "artifact-1",
+	}
+
+	_, err := uc.Execute(context.Background(), input)
+	if err == nil {
+		t.Fatal("expected error from UpsertBatch")
+	}
+	if !strings.Contains(err.Error(), "db write failed") {
+		t.Errorf("expected error to contain 'db write failed', got %q", err.Error())
+	}
+}
+
+func TestExtractWearable_SummaryUpsertError_ReturnsError(t *testing.T) {
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	summaryRepo := &failingWearableSummaryRepo{upsertErr: errors.New("summary write failed")}
+	auditRepo := repository.NewInMemoryAuditRepository()
+	uc := NewExtractWearableUseCase(measurementRepo, summaryRepo, auditRepo)
+
+	parser := &mockWearableParser{
+		source: entities.WearableSourceWhoop,
+		parseFunc: func(reader io.Reader, clientID, recordedBy string) ([]entities.Measurement, error) {
+			return createTestMeasurements("client-1", "coach-1"), nil
+		},
+	}
+
+	input := ExtractWearableInput{
+		ClientID:   "client-1",
+		CoachID:    "coach-1",
+		Source:     entities.WearableSourceWhoop,
+		Reader:     strings.NewReader("data"),
+		Parser:     parser,
+		ArtifactID: "artifact-1",
+	}
+
+	_, err := uc.Execute(context.Background(), input)
+	if err == nil {
+		t.Fatal("expected error from summary Upsert")
+	}
+	if !strings.Contains(err.Error(), "summary write failed") {
+		t.Errorf("expected error to contain 'summary write failed', got %q", err.Error())
+	}
+}
+
+func TestExtractWearable_AuditLogError_ReturnsError(t *testing.T) {
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	summaryRepo := repository.NewInMemoryWearableSummaryRepository()
+	auditRepo := &wearableFailingAuditRepo{logErr: errors.New("audit write failed")}
+	uc := NewExtractWearableUseCase(measurementRepo, summaryRepo, auditRepo)
+
+	parser := &mockWearableParser{
+		source: entities.WearableSourceWhoop,
+		parseFunc: func(reader io.Reader, clientID, recordedBy string) ([]entities.Measurement, error) {
+			return createTestMeasurements("client-1", "coach-1"), nil
+		},
+	}
+
+	input := ExtractWearableInput{
+		ClientID:   "client-1",
+		CoachID:    "coach-1",
+		Source:     entities.WearableSourceWhoop,
+		Reader:     strings.NewReader("data"),
+		Parser:     parser,
+		ArtifactID: "artifact-1",
+	}
+
+	_, err := uc.Execute(context.Background(), input)
+	if err == nil {
+		t.Fatal("expected error from audit LogEvent")
+	}
+	if !strings.Contains(err.Error(), "audit write failed") {
+		t.Errorf("expected error to contain 'audit write failed', got %q", err.Error())
+	}
+}
+
+func TestExtractWearable_AverageComputeError_ReturnsError(t *testing.T) {
+	measurementRepo := &failingMeasurementRepo{
+		averageErr: errors.New("average compute failed"),
+	}
+	summaryRepo := repository.NewInMemoryWearableSummaryRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	uc := NewExtractWearableUseCase(measurementRepo, summaryRepo, auditRepo)
+
+	parser := &mockWearableParser{
+		source: entities.WearableSourceWhoop,
+		parseFunc: func(reader io.Reader, clientID, recordedBy string) ([]entities.Measurement, error) {
+			return createTestMeasurements("client-1", "coach-1"), nil
+		},
+	}
+
+	input := ExtractWearableInput{
+		ClientID:   "client-1",
+		CoachID:    "coach-1",
+		Source:     entities.WearableSourceWhoop,
+		Reader:     strings.NewReader("data"),
+		Parser:     parser,
+		ArtifactID: "artifact-1",
+	}
+
+	_, err := uc.Execute(context.Background(), input)
+	if err == nil {
+		t.Fatal("expected error from Average computation")
+	}
+	if !strings.Contains(err.Error(), "average compute failed") {
+		t.Errorf("expected error to contain 'average compute failed', got %q", err.Error())
+	}
+}
+
+// --- Failing mock repositories for error path testing ---
+
+type failingMeasurementRepo struct {
+	upsertErr  error
+	averageErr error
+}
+
+func (r *failingMeasurementRepo) UpsertBatch(_ context.Context, _ []entities.Measurement) (int, error) {
+	if r.upsertErr != nil {
+		return 0, r.upsertErr
+	}
+	return 0, nil
+}
+
+func (r *failingMeasurementRepo) Average(_ context.Context, _ string, _ entities.MeasurementType, _ entities.WearableSource, _ time.Time) (float64, error) {
+	if r.averageErr != nil {
+		return 0, r.averageErr
+	}
+	return 0, nil
+}
+
+type failingWearableSummaryRepo struct {
+	upsertErr error
+}
+
+func (r *failingWearableSummaryRepo) Upsert(_ context.Context, _ *entities.WearableSummary) error {
+	return r.upsertErr
+}
+
+type wearableFailingAuditRepo struct {
+	logErr error
+}
+
+func (r *wearableFailingAuditRepo) LogEvent(_ context.Context, _ *entities.AuditEvent) error {
+	return r.logErr
+}
+
+func (r *wearableFailingAuditRepo) Query(_ context.Context, _ entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error) {
+	return nil, 0, nil
+}
+
 func TestRoundToOneDecimal_RoundsCorrectly(t *testing.T) {
 	tests := []struct {
 		input    float64

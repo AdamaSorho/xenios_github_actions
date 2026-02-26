@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/nutrition"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -224,7 +227,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,18 +235,55 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
 
+	// Register extract_nutrition job handler
+	registerNutritionHandler(w)
+
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// registerNutritionHandler sets up the extract_nutrition job handler.
+func registerNutritionHandler(w *worker.Worker) {
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	fileStorage := repository.NewInMemoryFileStorage()
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	summaryRepo := repository.NewInMemoryNutritionSummaryRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	parser := nutrition.NewCSVParser()
+
+	extractNutritionUC := usecase.NewExtractNutritionUseCase(
+		artifactRepo, fileStorage, measurementRepo, summaryRepo, auditRepo, parser,
+	)
+
+	w.RegisterHandler(entities.JobTypeExtractNutrition, func(ctx context.Context, job *entities.Job) error {
+		var payload struct {
+			ArtifactID string `json:"artifact_id"`
+			ClientID   string `json:"client_id"`
+			CoachID    string `json:"coach_id"`
+		}
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return fmt.Errorf("unmarshal payload: %w", err)
+		}
+
+		_, err := extractNutritionUC.Execute(ctx, usecase.ExtractNutritionInput{
+			ArtifactID: payload.ArtifactID,
+			ClientID:   payload.ClientID,
+			CoachID:    payload.CoachID,
+		})
+		return err
+	})
+
+	log.Println("Registered extract_nutrition job handler")
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

@@ -2,11 +2,8 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/xenios/backend/internal/adapter/middleware"
 	"github.com/xenios/backend/internal/domain/entities"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -28,8 +25,8 @@ type RequestDownloadUseCase interface {
 
 // UploadHandler handles HTTP requests for file uploads and downloads.
 type UploadHandler struct {
-	requestUploadUC  RequestUploadUseCase
-	confirmUploadUC  ConfirmUploadUseCase
+	requestUploadUC   RequestUploadUseCase
+	confirmUploadUC   ConfirmUploadUseCase
 	requestDownloadUC RequestDownloadUseCase
 }
 
@@ -57,15 +54,13 @@ type PresignRequest struct {
 
 // RequestPresignedURL handles POST /api/v1/uploads/presign
 func (h *UploadHandler) RequestPresignedURL(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
 
 	var req PresignRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondErrorWithCode(w, http.StatusBadRequest, "invalid JSON body", "INVALID_JSON", nil)
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -77,12 +72,7 @@ func (h *UploadHandler) RequestPresignedURL(w http.ResponseWriter, r *http.Reque
 		CoachID:         claims.Subject,
 		DocumentSubtype: entities.DocumentSubtype(req.DocumentSubtype),
 	})
-	if err != nil {
-		if usecase.IsValidationError(err) {
-			respondErrorWithCode(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR", nil)
-			return
-		}
-		respondErrorWithCode(w, http.StatusInternalServerError, "internal server error", "INTERNAL_ERROR", nil)
+	if handleUseCaseError(w, err) {
 		return
 	}
 
@@ -91,15 +81,13 @@ func (h *UploadHandler) RequestPresignedURL(w http.ResponseWriter, r *http.Reque
 
 // ConfirmUpload handles POST /api/v1/uploads/{artifactID}/confirm
 func (h *UploadHandler) ConfirmUpload(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
 
-	artifactID := chi.URLParam(r, "artifactID")
+	artifactID := requireURLParam(w, r, "artifactID", "artifact ID")
 	if artifactID == "" {
-		respondErrorWithCode(w, http.StatusBadRequest, "missing artifact ID", "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -107,16 +95,7 @@ func (h *UploadHandler) ConfirmUpload(w http.ResponseWriter, r *http.Request) {
 		ArtifactID: artifactID,
 		CoachID:    claims.Subject,
 	})
-	if err != nil {
-		if usecase.IsValidationError(err) {
-			respondErrorWithCode(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR", nil)
-			return
-		}
-		if usecase.IsAuthenticationError(err) {
-			respondErrorWithCode(w, http.StatusForbidden, err.Error(), "FORBIDDEN", nil)
-			return
-		}
-		respondErrorWithCode(w, http.StatusInternalServerError, "internal server error", "INTERNAL_ERROR", nil)
+	if handleUseCaseError(w, err) {
 		return
 	}
 
@@ -125,15 +104,13 @@ func (h *UploadHandler) ConfirmUpload(w http.ResponseWriter, r *http.Request) {
 
 // RequestDownloadURL handles POST /api/v1/uploads/{artifactID}/download
 func (h *UploadHandler) RequestDownloadURL(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
 
-	artifactID := chi.URLParam(r, "artifactID")
+	artifactID := requireURLParam(w, r, "artifactID", "artifact ID")
 	if artifactID == "" {
-		respondErrorWithCode(w, http.StatusBadRequest, "missing artifact ID", "INVALID_REQUEST", nil)
 		return
 	}
 
@@ -141,16 +118,7 @@ func (h *UploadHandler) RequestDownloadURL(w http.ResponseWriter, r *http.Reques
 		ArtifactID: artifactID,
 		CoachID:    claims.Subject,
 	})
-	if err != nil {
-		if usecase.IsValidationError(err) {
-			respondErrorWithCode(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR", nil)
-			return
-		}
-		if usecase.IsAuthenticationError(err) {
-			respondErrorWithCode(w, http.StatusForbidden, err.Error(), "FORBIDDEN", nil)
-			return
-		}
-		respondErrorWithCode(w, http.StatusInternalServerError, "internal server error", "INTERNAL_ERROR", nil)
+	if handleUseCaseError(w, err) {
 		return
 	}
 

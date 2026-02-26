@@ -2,8 +2,6 @@ package repository
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -29,14 +27,14 @@ func (q *InMemoryJobQueue) Enqueue(_ context.Context, jobType entities.JobType, 
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("generate id: %w", err)
+	id, err := generateID()
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
 	job := &entities.Job{
-		ID:          hex.EncodeToString(b),
+		ID:          id,
 		Type:        jobType,
 		Payload:     payload,
 		Status:      entities.JobStatusCreated,

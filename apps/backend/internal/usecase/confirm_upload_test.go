@@ -18,27 +18,7 @@ func newConfirmUploadUseCase() (*ConfirmUploadUseCase, *repository.InMemoryArtif
 	return uc, artifactRepo, fileStorage, auditRepo, jobQueue
 }
 
-func createPendingArtifact(t *testing.T, repo *repository.InMemoryArtifactRepository) *entities.Artifact {
-	t.Helper()
-	art := &entities.Artifact{
-		ClientID:    "client-1",
-		CoachID:     "coach-1",
-		FileName:    "report.pdf",
-		FileType:    "application/pdf",
-		FileSize:    1024,
-		StorageKey:  "client-1/document/test-id.pdf",
-		Type:        entities.ArtifactTypeDocument,
-		Status:      entities.ArtifactStatusPending,
-		ContentType: "application/pdf",
-	}
-	created, err := repo.Create(context.Background(), art)
-	if err != nil {
-		t.Fatalf("failed to create test artifact: %v", err)
-	}
-	return created
-}
-
-func createPendingArtifactWithHint(t *testing.T, repo *repository.InMemoryArtifactRepository, fileName, contentType string, hint entities.DocumentSubtype) *entities.Artifact {
+func createTestArtifact(t *testing.T, repo *repository.InMemoryArtifactRepository, fileName, contentType string, hint entities.DocumentSubtype) *entities.Artifact {
 	t.Helper()
 	art := &entities.Artifact{
 		ClientID:        "client-1",
@@ -57,6 +37,16 @@ func createPendingArtifactWithHint(t *testing.T, repo *repository.InMemoryArtifa
 		t.Fatalf("failed to create test artifact: %v", err)
 	}
 	return created
+}
+
+func createPendingArtifact(t *testing.T, repo *repository.InMemoryArtifactRepository) *entities.Artifact {
+	t.Helper()
+	return createTestArtifact(t, repo, "report.pdf", "application/pdf", "")
+}
+
+func createPendingArtifactWithHint(t *testing.T, repo *repository.InMemoryArtifactRepository, fileName, contentType string, hint entities.DocumentSubtype) *entities.Artifact {
+	t.Helper()
+	return createTestArtifact(t, repo, fileName, contentType, hint)
 }
 
 func TestConfirmUpload_ValidInput_UpdatesStatusToUploaded(t *testing.T) {

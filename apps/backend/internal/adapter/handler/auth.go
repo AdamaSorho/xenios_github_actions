@@ -2,10 +2,8 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
-	"github.com/xenios/backend/internal/adapter/middleware"
 	"github.com/xenios/backend/internal/domain/entities"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -76,8 +74,7 @@ type AuthResponse struct {
 // Register handles POST /api/auth/register
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondErrorWithCode(w, http.StatusBadRequest, "invalid JSON body", "INVALID_JSON", nil)
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -87,12 +84,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Name:     req.Name,
 		Role:     req.Role,
 	})
-	if err != nil {
-		if usecase.IsValidationError(err) {
-			respondErrorWithCode(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR", nil)
-			return
-		}
-		respondErrorWithCode(w, http.StatusInternalServerError, "internal server error", "INTERNAL_ERROR", nil)
+	if handleUseCaseError(w, err) {
 		return
 	}
 
@@ -105,8 +97,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 // Login handles POST /api/auth/login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondErrorWithCode(w, http.StatusBadRequest, "invalid JSON body", "INVALID_JSON", nil)
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -136,8 +127,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 // Refresh handles POST /api/auth/refresh
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondErrorWithCode(w, http.StatusBadRequest, "invalid JSON body", "INVALID_JSON", nil)
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 
@@ -160,9 +150,8 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles POST /api/auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
 

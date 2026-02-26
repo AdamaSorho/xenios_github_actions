@@ -2,8 +2,6 @@ package repository
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -30,11 +28,11 @@ func (r *InMemoryArtifactRepository) Create(_ context.Context, artifact *entitie
 	defer r.mu.Unlock()
 
 	if artifact.ID == "" {
-		b := make([]byte, 16)
-		if _, err := rand.Read(b); err != nil {
-			return nil, fmt.Errorf("generate id: %w", err)
+		id, err := generateID()
+		if err != nil {
+			return nil, err
 		}
-		artifact.ID = hex.EncodeToString(b)
+		artifact.ID = id
 	}
 
 	now := time.Now()
@@ -60,8 +58,9 @@ func (r *InMemoryArtifactRepository) FindByID(_ context.Context, id string) (*en
 	return &result, nil
 }
 
-// UpdateStatus updates the status of an artifact.
-func (r *InMemoryArtifactRepository) UpdateStatus(_ context.Context, id string, status entities.ArtifactStatus) (*entities.Artifact, error) {
+// updateArtifact is a helper that finds an artifact by ID, applies the
+// given mutation, and returns a copy.
+func (r *InMemoryArtifactRepository) updateArtifact(id string, mutate func(*entities.Artifact)) (*entities.Artifact, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -70,26 +69,19 @@ func (r *InMemoryArtifactRepository) UpdateStatus(_ context.Context, id string, 
 		return nil, fmt.Errorf("artifact not found: %s", id)
 	}
 
-	art.Status = status
+	mutate(art)
 	art.UpdatedAt = time.Now()
 
 	result := *art
 	return &result, nil
 }
 
+// UpdateStatus updates the status of an artifact.
+func (r *InMemoryArtifactRepository) UpdateStatus(_ context.Context, id string, status entities.ArtifactStatus) (*entities.Artifact, error) {
+	return r.updateArtifact(id, func(a *entities.Artifact) { a.Status = status })
+}
+
 // UpdateDocumentSubtype updates the document subtype of an artifact.
 func (r *InMemoryArtifactRepository) UpdateDocumentSubtype(_ context.Context, id string, subtype entities.DocumentSubtype) (*entities.Artifact, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	art, ok := r.artifacts[id]
-	if !ok {
-		return nil, fmt.Errorf("artifact not found: %s", id)
-	}
-
-	art.DocumentSubtype = subtype
-	art.UpdatedAt = time.Now()
-
-	result := *art
-	return &result, nil
+	return r.updateArtifact(id, func(a *entities.Artifact) { a.DocumentSubtype = subtype })
 }

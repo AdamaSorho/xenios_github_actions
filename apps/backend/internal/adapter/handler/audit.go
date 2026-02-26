@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/xenios/backend/internal/adapter/middleware"
 	"github.com/xenios/backend/internal/usecase"
 )
 
@@ -27,9 +26,8 @@ func NewAuditHandler(queryUC QueryAuditLogUseCase) *AuditHandler {
 
 // Query handles GET /api/v1/admin/audit
 func (h *AuditHandler) Query(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetUserClaims(r.Context())
+	claims := requireAuth(w, r)
 	if claims == nil {
-		respondErrorWithCode(w, http.StatusUnauthorized, "missing authentication", "UNAUTHORIZED", nil)
 		return
 	}
 

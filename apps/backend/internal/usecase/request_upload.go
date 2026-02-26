@@ -11,9 +11,7 @@ import (
 
 // RequestUploadUseCase handles presigned URL generation for file uploads.
 type RequestUploadUseCase struct {
-	artifactRepo repository.ArtifactRepository
-	fileStorage  repository.FileStorageRepository
-	auditRepo    repository.AuditRepository
+	artifactBase
 }
 
 // NewRequestUploadUseCase creates a new RequestUploadUseCase.
@@ -23,9 +21,11 @@ func NewRequestUploadUseCase(
 	auditRepo repository.AuditRepository,
 ) *RequestUploadUseCase {
 	return &RequestUploadUseCase{
-		artifactRepo: artifactRepo,
-		fileStorage:  fileStorage,
-		auditRepo:    auditRepo,
+		artifactBase: artifactBase{
+			artifactRepo: artifactRepo,
+			fileStorage:  fileStorage,
+			auditRepo:    auditRepo,
+		},
 	}
 }
 
@@ -41,10 +41,10 @@ type RequestUploadInput struct {
 
 // RequestUploadOutput holds the output of a presigned upload URL request.
 type RequestUploadOutput struct {
-	PresignedURL string         `json:"presigned_url"`
-	ArtifactID   string         `json:"artifact_id"`
-	ExpiresAt    time.Time      `json:"expires_at"`
-	StorageKey   string         `json:"storage_key"`
+	PresignedURL string             `json:"presigned_url"`
+	ArtifactID   string             `json:"artifact_id"`
+	ExpiresAt    time.Time          `json:"expires_at"`
+	StorageKey   string             `json:"storage_key"`
 	Artifact     *entities.Artifact `json:"artifact"`
 }
 
@@ -114,18 +114,12 @@ func (uc *RequestUploadUseCase) Execute(ctx context.Context, input RequestUpload
 		return nil, fmt.Errorf("generate upload url: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
-		ActorID:    input.CoachID,
-		Action:     "artifact.upload_requested",
-		EntityType: "artifact",
-		EntityID:   created.ID,
-		Metadata: map[string]interface{}{
-			"file_name":        input.FileName,
-			"file_size":        input.FileSize,
-			"content_type":     input.ContentType,
-			"client_id":        input.ClientID,
-			"document_subtype": string(input.DocumentSubtype),
-		},
+	uc.logAudit(ctx, input.CoachID, "artifact.upload_requested", created.ID, map[string]interface{}{
+		"file_name":        input.FileName,
+		"file_size":        input.FileSize,
+		"content_type":     input.ContentType,
+		"client_id":        input.ClientID,
+		"document_subtype": string(input.DocumentSubtype),
 	})
 
 	return &RequestUploadOutput{

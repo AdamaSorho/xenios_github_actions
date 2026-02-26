@@ -2,8 +2,6 @@ package repository
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"sync"
 	"time"
 
@@ -29,8 +27,9 @@ func (r *InMemoryCoachClientRepository) Create(_ context.Context, coachID, clien
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	id, _ := generateID()
 	cc := &entities.CoachClient{
-		ID:        generateRepoID(),
+		ID:        id,
 		CoachID:   coachID,
 		ClientID:  clientID,
 		CreatedAt: time.Now(),
@@ -63,10 +62,3 @@ func (r *InMemoryCoachClientRepository) ListByCoachID(_ context.Context, coachID
 	return filtered[offset:end], nil
 }
 
-func generateRepoID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "unknown"
-	}
-	return hex.EncodeToString(b)
-}

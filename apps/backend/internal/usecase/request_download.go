@@ -11,9 +11,7 @@ import (
 
 // RequestDownloadUseCase handles presigned URL generation for file downloads.
 type RequestDownloadUseCase struct {
-	artifactRepo repository.ArtifactRepository
-	fileStorage  repository.FileStorageRepository
-	auditRepo    repository.AuditRepository
+	artifactBase
 }
 
 // NewRequestDownloadUseCase creates a new RequestDownloadUseCase.
@@ -23,9 +21,11 @@ func NewRequestDownloadUseCase(
 	auditRepo repository.AuditRepository,
 ) *RequestDownloadUseCase {
 	return &RequestDownloadUseCase{
-		artifactRepo: artifactRepo,
-		fileStorage:  fileStorage,
-		auditRepo:    auditRepo,
+		artifactBase: artifactBase{
+			artifactRepo: artifactRepo,
+			fileStorage:  fileStorage,
+			auditRepo:    auditRepo,
+		},
 	}
 }
 
@@ -51,17 +51,9 @@ func (uc *RequestDownloadUseCase) Execute(ctx context.Context, input RequestDown
 		return nil, &ValidationError{Message: "coach_id is required"}
 	}
 
-	artifact, err := uc.artifactRepo.FindByID(ctx, input.ArtifactID)
+	artifact, err := uc.findAndVerifyOwnership(ctx, input.ArtifactID, input.CoachID)
 	if err != nil {
-		return nil, fmt.Errorf("find artifact: %w", err)
-	}
-	if artifact == nil {
-		return nil, &ValidationError{Message: "artifact not found"}
-	}
-
-	// Verify the requesting coach owns this artifact
-	if artifact.CoachID != input.CoachID {
-		return nil, &AuthenticationError{Message: "not authorized to download this file"}
+		return nil, err
 	}
 
 	if artifact.Status != entities.ArtifactStatusUploaded {
@@ -74,16 +66,10 @@ func (uc *RequestDownloadUseCase) Execute(ctx context.Context, input RequestDown
 		return nil, fmt.Errorf("generate download url: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
-		ActorID:    input.CoachID,
-		Action:     "artifact.download_requested",
-		EntityType: "artifact",
-		EntityID:   input.ArtifactID,
-		Metadata: map[string]interface{}{
-			"file_name":   artifact.FileName,
-			"storage_key": artifact.StorageKey,
-			"client_id":   artifact.ClientID,
-		},
+	uc.logAudit(ctx, input.CoachID, "artifact.download_requested", input.ArtifactID, map[string]interface{}{
+		"file_name":   artifact.FileName,
+		"storage_key": artifact.StorageKey,
+		"client_id":   artifact.ClientID,
 	})
 
 	return &RequestDownloadOutput{

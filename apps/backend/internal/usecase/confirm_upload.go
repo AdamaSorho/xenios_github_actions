@@ -11,10 +11,8 @@ import (
 
 // ConfirmUploadUseCase handles upload confirmation after a client uploads to S3.
 type ConfirmUploadUseCase struct {
-	artifactRepo repository.ArtifactRepository
-	fileStorage  repository.FileStorageRepository
-	auditRepo    repository.AuditRepository
-	jobQueue     repository.JobQueue
+	artifactBase
+	jobQueue repository.JobQueue
 }
 
 // NewConfirmUploadUseCase creates a new ConfirmUploadUseCase.
@@ -25,10 +23,12 @@ func NewConfirmUploadUseCase(
 	jobQueue repository.JobQueue,
 ) *ConfirmUploadUseCase {
 	return &ConfirmUploadUseCase{
-		artifactRepo: artifactRepo,
-		fileStorage:  fileStorage,
-		auditRepo:    auditRepo,
-		jobQueue:     jobQueue,
+		artifactBase: artifactBase{
+			artifactRepo: artifactRepo,
+			fileStorage:  fileStorage,
+			auditRepo:    auditRepo,
+		},
+		jobQueue: jobQueue,
 	}
 }
 
@@ -54,17 +54,9 @@ func (uc *ConfirmUploadUseCase) Execute(ctx context.Context, input ConfirmUpload
 		return nil, &ValidationError{Message: "coach_id is required"}
 	}
 
-	artifact, err := uc.artifactRepo.FindByID(ctx, input.ArtifactID)
+	artifact, err := uc.findAndVerifyOwnership(ctx, input.ArtifactID, input.CoachID)
 	if err != nil {
-		return nil, fmt.Errorf("find artifact: %w", err)
-	}
-	if artifact == nil {
-		return nil, &ValidationError{Message: "artifact not found"}
-	}
-
-	// Verify the requesting coach owns this artifact
-	if artifact.CoachID != input.CoachID {
-		return nil, &AuthenticationError{Message: "not authorized to confirm this upload"}
+		return nil, err
 	}
 
 	if artifact.Status != entities.ArtifactStatusPending {
@@ -95,16 +87,10 @@ func (uc *ConfirmUploadUseCase) Execute(ctx context.Context, input ConfirmUpload
 		return nil, fmt.Errorf("update document subtype: %w", err)
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
-		ActorID:    input.CoachID,
-		Action:     "artifact.upload_confirmed",
-		EntityType: "artifact",
-		EntityID:   input.ArtifactID,
-		Metadata: map[string]interface{}{
-			"storage_key": artifact.StorageKey,
-			"file_name":   artifact.FileName,
-			"client_id":   artifact.ClientID,
-		},
+	uc.logAudit(ctx, input.CoachID, "artifact.upload_confirmed", input.ArtifactID, map[string]interface{}{
+		"storage_key": artifact.StorageKey,
+		"file_name":   artifact.FileName,
+		"client_id":   artifact.ClientID,
 	})
 
 	// Enqueue extraction job
@@ -125,16 +111,10 @@ func (uc *ConfirmUploadUseCase) Execute(ctx context.Context, input ConfirmUpload
 		jobID = job.ID
 	}
 
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
-		ActorID:    input.CoachID,
-		Action:     "artifact.classified",
-		EntityType: "artifact",
-		EntityID:   input.ArtifactID,
-		Metadata: map[string]interface{}{
-			"document_subtype": string(subtype),
-			"job_type":         string(jobType),
-			"job_id":           jobID,
-		},
+	uc.logAudit(ctx, input.CoachID, "artifact.classified", input.ArtifactID, map[string]interface{}{
+		"document_subtype": string(subtype),
+		"job_type":         string(jobType),
+		"job_id":           jobID,
 	})
 
 	return &ConfirmUploadOutput{

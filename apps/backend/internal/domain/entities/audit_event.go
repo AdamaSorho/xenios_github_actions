@@ -25,6 +25,8 @@ var ValidAuditActions = map[string]bool{
 	"insight.generate":  true,
 	"insight.approve":   true,
 	"insight.reject":    true,
+	"insight.edit":      true,
+	"insight.share":     true,
 	"summary.send":      true,
 	"client.view":       true,
 	"auth.login":        true,

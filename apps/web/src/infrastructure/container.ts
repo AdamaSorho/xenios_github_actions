@@ -15,6 +15,12 @@ import { LoginUseCase } from '@/application/usecases/LoginUseCase'
 import { RegisterUseCase } from '@/application/usecases/RegisterUseCase'
 import { LogoutUseCase } from '@/application/usecases/LogoutUseCase'
 import { RefreshTokenUseCase } from '@/application/usecases/RefreshTokenUseCase'
+import { ApiInsightRepository } from './repositories/ApiInsightRepository'
+import { GetInsightQueueUseCase } from '@/application/usecases/GetInsightQueueUseCase'
+import { ApproveInsightUseCase } from '@/application/usecases/ApproveInsightUseCase'
+import { DismissInsightUseCase } from '@/application/usecases/DismissInsightUseCase'
+import { EditInsightUseCase } from '@/application/usecases/EditInsightUseCase'
+import { ShareInsightUseCase } from '@/application/usecases/ShareInsightUseCase'
 
 // Infrastructure: API client repositories and services
 const userRepository = new ApiUserRepository()
@@ -33,3 +39,11 @@ export const loginUseCase = new LoginUseCase(authRepository)
 export const registerUseCase = new RegisterUseCase(authRepository)
 export const logoutUseCase = new LogoutUseCase(authRepository)
 export const refreshTokenUseCase = new RefreshTokenUseCase(authRepository)
+
+// Insight queue use cases
+const insightRepository = new ApiInsightRepository()
+export const getInsightQueueUseCase = new GetInsightQueueUseCase(insightRepository)
+export const approveInsightUseCase = new ApproveInsightUseCase(insightRepository)
+export const dismissInsightUseCase = new DismissInsightUseCase(insightRepository)
+export const editInsightUseCase = new EditInsightUseCase(insightRepository)
+export const shareInsightUseCase = new ShareInsightUseCase(insightRepository)

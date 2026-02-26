@@ -121,6 +121,15 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		api.Post("/uploads/{artifactID}/confirm", uploadHandler.ConfirmUpload)
 		api.Post("/uploads/{artifactID}/download", uploadHandler.RequestDownloadURL)
 
+		// Insight approval queue endpoints
+		insightHandler := setupInsightHandler(auditRepo)
+		api.Get("/insights/queue", insightHandler.GetQueue)
+		api.Get("/clients/{clientID}/insights", insightHandler.GetClientInsights)
+		api.Put("/insights/{insightID}", insightHandler.Edit)
+		api.Put("/insights/{insightID}/approve", insightHandler.Approve)
+		api.Put("/insights/{insightID}/dismiss", insightHandler.Dismiss)
+		api.Put("/insights/{insightID}/share", insightHandler.Share)
+
 		// Job queue endpoints (if database is available)
 		if pool != nil {
 			queueHandler, w := setupJobQueue(pool)
@@ -257,6 +266,20 @@ func setupUploadHandler() *handler.UploadHandler {
 	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
 
 	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)
+}
+
+// setupInsightHandler wires up insight approval queue dependencies and returns the handler.
+func setupInsightHandler(auditRepo domainrepo.AuditRepository) *handler.InsightHandler {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+
+	queueUC := usecase.NewGetInsightQueueUseCase(insightRepo)
+	clientInsightsUC := usecase.NewGetClientInsightsUseCase(insightRepo)
+	approveUC := usecase.NewApproveInsightUseCase(insightRepo, auditRepo)
+	dismissUC := usecase.NewDismissInsightUseCase(insightRepo, auditRepo)
+	editUC := usecase.NewEditInsightUseCase(insightRepo, auditRepo)
+	shareUC := usecase.NewShareInsightUseCase(insightRepo, auditRepo)
+
+	return handler.NewInsightHandler(queueUC, clientInsightsUC, approveUC, dismissUC, editUC, shareUC)
 }
 
 // getPort returns the port to listen on

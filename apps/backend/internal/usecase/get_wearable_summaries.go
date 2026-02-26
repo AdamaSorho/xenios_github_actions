@@ -11,8 +11,7 @@ import (
 // GetWearableSummariesUseCase handles querying wearable summaries for a client.
 type GetWearableSummariesUseCase struct {
 	wearableRepo repository.WearableSummaryRepository
-	ccRepo       repository.CoachClientRepository
-	auditRepo    repository.AuditRepository
+	clientAccessChecker
 }
 
 // NewGetWearableSummariesUseCase creates a new GetWearableSummariesUseCase.
@@ -22,9 +21,8 @@ func NewGetWearableSummariesUseCase(
 	auditRepo repository.AuditRepository,
 ) *GetWearableSummariesUseCase {
 	return &GetWearableSummariesUseCase{
-		wearableRepo: wearableRepo,
-		ccRepo:       ccRepo,
-		auditRepo:    auditRepo,
+		wearableRepo:        wearableRepo,
+		clientAccessChecker: clientAccessChecker{ccRepo: ccRepo, auditRepo: auditRepo},
 	}
 }
 
@@ -70,27 +68,4 @@ func (uc *GetWearableSummariesUseCase) Execute(ctx context.Context, coachID, cli
 	return &GetWearableSummariesOutput{
 		Summaries: summaries,
 	}, nil
-}
-
-func (uc *GetWearableSummariesUseCase) verifyCoachClient(ctx context.Context, coachID, clientID string) error {
-	rel, err := uc.ccRepo.FindByCoachAndClient(ctx, coachID, clientID)
-	if err != nil {
-		return fmt.Errorf("check coach-client relationship: %w", err)
-	}
-	if rel == nil {
-		return &AuthenticationError{Message: "forbidden: not authorized to access this client"}
-	}
-	return nil
-}
-
-func (uc *GetWearableSummariesUseCase) logPHIAccess(ctx context.Context, coachID, clientID, resource string) {
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
-		ActorID:    coachID,
-		Action:     "phi.access",
-		EntityType: "client",
-		EntityID:   clientID,
-		Metadata: map[string]interface{}{
-			"resource": resource,
-		},
-	})
 }

@@ -11,8 +11,7 @@ import (
 // GetLatestMeasurementsUseCase handles querying the latest measurement per type.
 type GetLatestMeasurementsUseCase struct {
 	measurementRepo repository.MeasurementRepository
-	ccRepo          repository.CoachClientRepository
-	auditRepo       repository.AuditRepository
+	clientAccessChecker
 }
 
 // NewGetLatestMeasurementsUseCase creates a new GetLatestMeasurementsUseCase.
@@ -22,9 +21,8 @@ func NewGetLatestMeasurementsUseCase(
 	auditRepo repository.AuditRepository,
 ) *GetLatestMeasurementsUseCase {
 	return &GetLatestMeasurementsUseCase{
-		measurementRepo: measurementRepo,
-		ccRepo:          ccRepo,
-		auditRepo:       auditRepo,
+		measurementRepo:     measurementRepo,
+		clientAccessChecker: clientAccessChecker{ccRepo: ccRepo, auditRepo: auditRepo},
 	}
 }
 
@@ -60,27 +58,4 @@ func (uc *GetLatestMeasurementsUseCase) Execute(ctx context.Context, coachID, cl
 	return &GetLatestMeasurementsOutput{
 		Measurements: measurements,
 	}, nil
-}
-
-func (uc *GetLatestMeasurementsUseCase) verifyCoachClient(ctx context.Context, coachID, clientID string) error {
-	rel, err := uc.ccRepo.FindByCoachAndClient(ctx, coachID, clientID)
-	if err != nil {
-		return fmt.Errorf("check coach-client relationship: %w", err)
-	}
-	if rel == nil {
-		return &AuthenticationError{Message: "forbidden: not authorized to access this client"}
-	}
-	return nil
-}
-
-func (uc *GetLatestMeasurementsUseCase) logPHIAccess(ctx context.Context, coachID, clientID, resource string) {
-	_ = uc.auditRepo.LogEvent(ctx, &entities.AuditEvent{
-		ActorID:    coachID,
-		Action:     "phi.access",
-		EntityType: "client",
-		EntityID:   clientID,
-		Metadata: map[string]interface{}{
-			"resource": resource,
-		},
-	})
 }

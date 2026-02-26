@@ -19,6 +19,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/parser"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -224,7 +225,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,12 +233,22 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
+
+	// Register lab results extraction handler
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	fileReader := repository.NewInMemoryFileContentReader()
+	labAuditRepo := repository.NewInMemoryAuditRepository()
+	csvParser := parser.NewCSVLabParser()
+	pdfParser := parser.NewPDFLabParser()
+	labArtifactRepo := repository.NewInMemoryArtifactRepository()
+	extractLabUC := usecase.NewExtractLabResultsUseCase(labArtifactRepo, measurementRepo, fileReader, labAuditRepo, csvParser, pdfParser)
+	w.RegisterHandler(entities.JobTypeExtractLabResults, extractLabUC.Execute)
 
 	ctx := context.Background()
 	w.Start(ctx)

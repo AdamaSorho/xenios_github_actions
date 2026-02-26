@@ -1,3 +1,7 @@
+-- Replace the generic wearable_summaries table (created in 000004) with
+-- a wearable-specific schema that uses the wearable_source enum.
+DROP TABLE IF EXISTS wearable_summaries;
+
 -- Create wearable_summaries table for rolling averages
 CREATE TABLE IF NOT EXISTS wearable_summaries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

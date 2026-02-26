@@ -18,6 +18,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Replace the generic measurements table (created in 000004) with
+-- a wearable-specific schema that uses enum types and a different column set.
+DROP TABLE IF EXISTS measurements;
+
 -- Create measurements table
 CREATE TABLE IF NOT EXISTS measurements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -65,7 +65,10 @@ func TestMigrations_AllFilesExist(t *testing.T) {
 		"000007_create_rls_policies",
 		"000008_create_job_queue",
 		"000009_create_refresh_tokens",
+		"000010_create_artifacts_table",
 		"000011_audit_trigger",
+		"000012_create_measurements_table",
+		"000013_create_wearable_summaries_table",
 	}
 
 	dir := migrationDir(t)

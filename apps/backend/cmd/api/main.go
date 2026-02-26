@@ -121,6 +121,13 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		api.Post("/uploads/{artifactID}/confirm", uploadHandler.ConfirmUpload)
 		api.Post("/uploads/{artifactID}/download", uploadHandler.RequestDownloadURL)
 
+		// Client measurements and profile endpoints
+		measurementHandler := setupMeasurementHandler(ccRepo, auditRepo)
+		api.Get("/clients/{clientID}/measurements", measurementHandler.ListMeasurements)
+		api.Get("/clients/{clientID}/measurements/latest", measurementHandler.LatestMeasurements)
+		api.Get("/clients/{clientID}/wearable-summaries", measurementHandler.WearableSummaries)
+		api.Get("/clients/{clientID}/profile-summary", measurementHandler.ProfileSummary)
+
 		// Job queue endpoints (if database is available)
 		if pool != nil {
 			queueHandler, w := setupJobQueue(pool)
@@ -244,6 +251,19 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// setupMeasurementHandler wires up measurement/profile dependencies and returns the handler.
+func setupMeasurementHandler(ccRepo domainrepo.CoachClientRepository, auditRepo domainrepo.AuditRepository) *handler.MeasurementHandler {
+	measurementRepo := repository.NewInMemoryMeasurementRepository()
+	wearableRepo := repository.NewInMemoryWearableSummaryRepository()
+
+	getMeasurementsUC := usecase.NewGetClientMeasurementsUseCase(measurementRepo, ccRepo, auditRepo)
+	getLatestUC := usecase.NewGetLatestMeasurementsUseCase(measurementRepo, ccRepo, auditRepo)
+	getWearableSumUC := usecase.NewGetWearableSummariesUseCase(wearableRepo, ccRepo, auditRepo)
+	getProfileSummaryUC := usecase.NewGetClientProfileSummaryUseCase(measurementRepo, wearableRepo, ccRepo, auditRepo)
+
+	return handler.NewMeasurementHandler(getMeasurementsUC, getLatestUC, getWearableSumUC, getProfileSummaryUC)
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

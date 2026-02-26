@@ -27,6 +27,10 @@ func (m *mockCoachClientRepo) ListByCoachID(ctx context.Context, coachID string,
 	return []*entities.CoachClient{}, nil
 }
 
+func (m *mockCoachClientRepo) FindByCoachAndClient(_ context.Context, coachID, clientID string) (*entities.CoachClient, error) {
+	return &entities.CoachClient{ID: "rel-1", CoachID: coachID, ClientID: clientID}, nil
+}
+
 func TestCreateCoachClient_Success(t *testing.T) {
 	repo := &mockCoachClientRepo{}
 	uc := NewCreateCoachClientUseCase(repo)

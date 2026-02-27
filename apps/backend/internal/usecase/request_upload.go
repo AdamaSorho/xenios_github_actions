@@ -31,11 +31,12 @@ func NewRequestUploadUseCase(
 
 // RequestUploadInput holds the input for requesting an upload URL.
 type RequestUploadInput struct {
-	FileName    string
-	FileSize    int64
-	ContentType string
-	ClientID    string
-	CoachID     string
+	FileName        string
+	FileSize        int64
+	ContentType     string
+	ClientID        string
+	CoachID         string
+	DocumentSubtype entities.DocumentSubtype
 }
 
 // RequestUploadOutput holds the output of a presigned upload URL request.
@@ -79,16 +80,22 @@ func (uc *RequestUploadUseCase) Execute(ctx context.Context, input RequestUpload
 		return nil, &ValidationError{Message: err.Error()}
 	}
 
+	// Validate document subtype hint if provided
+	if input.DocumentSubtype != "" && !entities.IsValidDocumentSubtype(input.DocumentSubtype) {
+		return nil, &ValidationError{Message: fmt.Sprintf("invalid document_subtype: %s", input.DocumentSubtype)}
+	}
+
 	// Create artifact record with pending status
 	artifact := &entities.Artifact{
-		ClientID:    input.ClientID,
-		CoachID:     input.CoachID,
-		FileName:    input.FileName,
-		FileType:    input.ContentType,
-		FileSize:    input.FileSize,
-		Type:        artTypeFromExt,
-		Status:      entities.ArtifactStatusPending,
-		ContentType: input.ContentType,
+		ClientID:        input.ClientID,
+		CoachID:         input.CoachID,
+		FileName:        input.FileName,
+		FileType:        input.ContentType,
+		FileSize:        input.FileSize,
+		Type:            artTypeFromExt,
+		Status:          entities.ArtifactStatusPending,
+		ContentType:     input.ContentType,
+		DocumentSubtype: input.DocumentSubtype,
 	}
 
 	created, err := uc.artifactRepo.Create(ctx, artifact)

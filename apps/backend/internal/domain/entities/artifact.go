@@ -68,20 +68,100 @@ var AllowedContentTypes = map[string]ArtifactType{
 	"image/png":        ArtifactTypeImage,
 }
 
+// DocumentSubtype classifies uploaded documents for extraction pipeline routing.
+type DocumentSubtype string
+
+const (
+	DocumentSubtypeInBodyPDF    DocumentSubtype = "inbody_pdf"
+	DocumentSubtypeLabCSV       DocumentSubtype = "lab_csv"
+	DocumentSubtypeLabPDF       DocumentSubtype = "lab_pdf"
+	DocumentSubtypeWearableCSV  DocumentSubtype = "wearable_csv"
+	DocumentSubtypeWearableJSON DocumentSubtype = "wearable_json"
+	DocumentSubtypeNutritionCSV DocumentSubtype = "nutrition_csv"
+	DocumentSubtypeAudio        DocumentSubtype = "audio"
+	DocumentSubtypeOther        DocumentSubtype = "other"
+)
+
+// ValidDocumentSubtypes lists all valid document subtypes.
+var ValidDocumentSubtypes = map[DocumentSubtype]bool{
+	DocumentSubtypeInBodyPDF:    true,
+	DocumentSubtypeLabCSV:       true,
+	DocumentSubtypeLabPDF:       true,
+	DocumentSubtypeWearableCSV:  true,
+	DocumentSubtypeWearableJSON: true,
+	DocumentSubtypeNutritionCSV: true,
+	DocumentSubtypeAudio:        true,
+	DocumentSubtypeOther:        true,
+}
+
+// IsValidDocumentSubtype returns true if the subtype is a known valid value.
+func IsValidDocumentSubtype(subtype DocumentSubtype) bool {
+	return ValidDocumentSubtypes[subtype]
+}
+
+// ClassifyDocument determines the document subtype from the file extension,
+// content type, and optional user hint. The hint takes precedence if valid.
+func ClassifyDocument(fileName, contentType string, hint DocumentSubtype) DocumentSubtype {
+	if hint != "" && IsValidDocumentSubtype(hint) {
+		return hint
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+
+	if isAudioFile(ext, ct) {
+		return DocumentSubtypeAudio
+	}
+
+	return DocumentSubtypeOther
+}
+
+func isAudioFile(ext, ct string) bool {
+	switch ext {
+	case ".aac", ".wav", ".mp3":
+		return true
+	}
+	switch ct {
+	case "audio/aac", "audio/wav", "audio/mpeg":
+		return true
+	}
+	return false
+}
+
+// DocumentSubtypeToJobType maps a document subtype to the job type that should
+// process it.
+func DocumentSubtypeToJobType(subtype DocumentSubtype) JobType {
+	switch subtype {
+	case DocumentSubtypeInBodyPDF:
+		return JobTypeExtractInBody
+	case DocumentSubtypeLabCSV, DocumentSubtypeLabPDF:
+		return JobTypeExtractLabResults
+	case DocumentSubtypeWearableCSV, DocumentSubtypeWearableJSON:
+		return JobTypeExtractWearable
+	case DocumentSubtypeNutritionCSV:
+		return JobTypeExtractNutrition
+	case DocumentSubtypeAudio:
+		return JobTypeTranscribeAudio
+	default:
+		return JobTypeClassifyDocument
+	}
+}
+
 // Artifact represents a file stored in the object storage system.
 type Artifact struct {
-	ID          string         `json:"id"`
-	ClientID    string         `json:"client_id"`
-	CoachID     string         `json:"coach_id"`
-	FileName    string         `json:"file_name"`
-	FileType    string         `json:"file_type"`
-	FileSize    int64          `json:"file_size"`
-	StorageKey  string         `json:"storage_key"`
-	Type        ArtifactType   `json:"type"`
-	Status      ArtifactStatus `json:"status"`
-	ContentType string         `json:"content_type"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID              string          `json:"id"`
+	ClientID        string          `json:"client_id"`
+	CoachID         string          `json:"coach_id"`
+	FileName        string          `json:"file_name"`
+	FileType        string          `json:"file_type"`
+	FileSize        int64           `json:"file_size"`
+	StorageKey      string          `json:"storage_key"`
+	Type            ArtifactType    `json:"type"`
+	Status          ArtifactStatus  `json:"status"`
+	ContentType     string          `json:"content_type"`
+	DocumentSubtype DocumentSubtype `json:"document_subtype,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // ValidateFileExtension checks if the file extension is allowed and returns the artifact type.

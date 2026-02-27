@@ -231,6 +231,12 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeAnalyticsAggregation,
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
+		entities.JobTypeExtractInBody,
+		entities.JobTypeExtractLabResults,
+		entities.JobTypeExtractWearable,
+		entities.JobTypeExtractNutrition,
+		entities.JobTypeTranscribeAudio,
+		entities.JobTypeClassifyDocument,
 	}
 	for _, jt := range allJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
@@ -251,9 +257,10 @@ func setupUploadHandler() *handler.UploadHandler {
 	artifactRepo := repository.NewInMemoryArtifactRepository()
 	fileStorage := repository.NewInMemoryFileStorage()
 	auditRepo := repository.NewInMemoryAuditRepository()
+	jobQueue := repository.NewInMemoryJobQueue()
 
 	requestUploadUC := usecase.NewRequestUploadUseCase(artifactRepo, fileStorage, auditRepo)
-	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo)
+	confirmUploadUC := usecase.NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo, jobQueue)
 	requestDownloadUC := usecase.NewRequestDownloadUseCase(artifactRepo, fileStorage, auditRepo)
 
 	return handler.NewUploadHandler(requestUploadUC, confirmUploadUC, requestDownloadUC)

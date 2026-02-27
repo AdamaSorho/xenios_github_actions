@@ -426,8 +426,8 @@ func TestSetupJobQueue_RegistersAllJobTypes(t *testing.T) {
 	defer w.Stop()
 
 	types := w.RegisteredJobTypes()
-	if len(types) != 6 {
-		t.Errorf("expected 6 registered job types, got %d", len(types))
+	if len(types) != 12 {
+		t.Errorf("expected 12 registered job types, got %d", len(types))
 	}
 }
 

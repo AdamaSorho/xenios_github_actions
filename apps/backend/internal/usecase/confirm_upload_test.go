@@ -12,8 +12,9 @@ func newConfirmUploadUseCase() (*ConfirmUploadUseCase, *repository.InMemoryArtif
 	artifactRepo := repository.NewInMemoryArtifactRepository()
 	fileStorage := repository.NewInMemoryFileStorage()
 	auditRepo := repository.NewInMemoryAuditRepository()
+	jobQueue := repository.NewInMemoryJobQueue()
 
-	uc := NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo)
+	uc := NewConfirmUploadUseCase(artifactRepo, fileStorage, auditRepo, jobQueue)
 	return uc, artifactRepo, fileStorage, auditRepo
 }
 

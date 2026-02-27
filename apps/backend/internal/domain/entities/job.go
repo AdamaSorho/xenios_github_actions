@@ -25,12 +25,18 @@ func NewValidationError(format string, args ...interface{}) *ValidationError {
 type JobType string
 
 const (
-	JobTypeTranscription         JobType = "transcription"
-	JobTypeDocumentExtraction    JobType = "document_extraction"
-	JobTypeInsightGeneration     JobType = "insight_generation"
-	JobTypeAnalyticsAggregation  JobType = "analytics_aggregation"
-	JobTypeRiskDetection         JobType = "risk_detection"
-	JobTypeAudioCleanup          JobType = "audio_cleanup"
+	JobTypeTranscription        JobType = "transcription"
+	JobTypeDocumentExtraction   JobType = "document_extraction"
+	JobTypeInsightGeneration    JobType = "insight_generation"
+	JobTypeAnalyticsAggregation JobType = "analytics_aggregation"
+	JobTypeRiskDetection        JobType = "risk_detection"
+	JobTypeAudioCleanup         JobType = "audio_cleanup"
+	JobTypeExtractInBody        JobType = "extract_inbody"
+	JobTypeExtractLabResults    JobType = "extract_lab_results"
+	JobTypeExtractWearable      JobType = "extract_wearable"
+	JobTypeExtractNutrition     JobType = "extract_nutrition"
+	JobTypeTranscribeAudio      JobType = "transcribe_audio"
+	JobTypeClassifyDocument     JobType = "classify_document"
 )
 
 // JobStatus represents the current status of a job.
@@ -84,7 +90,13 @@ func IsValidJobType(jt JobType) bool {
 		JobTypeInsightGeneration,
 		JobTypeAnalyticsAggregation,
 		JobTypeRiskDetection,
-		JobTypeAudioCleanup:
+		JobTypeAudioCleanup,
+		JobTypeExtractInBody,
+		JobTypeExtractLabResults,
+		JobTypeExtractWearable,
+		JobTypeExtractNutrition,
+		JobTypeTranscribeAudio,
+		JobTypeClassifyDocument:
 		return true
 	}
 	return false

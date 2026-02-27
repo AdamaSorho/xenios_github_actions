@@ -933,6 +933,91 @@ func TestBuildLabInsightCard_CriticalLow_SetsLowTitle(t *testing.T) {
 	}
 }
 
+func TestGenerateInsights_FailingAuditRepo_DoesNotBreakExecution(t *testing.T) {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+	measRepo := repository.NewInMemoryMeasurementRepository()
+	auditRepo := &insightFailingAuditRepo{}
+
+	measRepo.Add(&entities.Measurement{
+		ID:              "m1",
+		ClientID:        "client-1",
+		MeasurementType: "LDL",
+		Value:           142,
+		Unit:            "mg/dL",
+		Flag:            entities.MeasurementFlagHigh,
+		RefRangeHigh:    refFloat(100),
+		ArtifactID:      "artifact-1",
+		MeasuredAt:      time.Now(),
+	})
+
+	uc := NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+	output, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err != nil {
+		t.Fatalf("audit failure should not break execution: %v", err)
+	}
+	if output.InsightsCreated != 1 {
+		t.Errorf("expected 1 insight, got %d", output.InsightsCreated)
+	}
+}
+
+func TestGenerateInsights_InsightRepoCreateError_PropagatesError(t *testing.T) {
+	measRepo := repository.NewInMemoryMeasurementRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	insightRepo := &failingInsightCardRepo{err: errors.New("create failed")}
+
+	measRepo.Add(&entities.Measurement{
+		ID:              "m1",
+		ClientID:        "client-1",
+		MeasurementType: "LDL",
+		Value:           142,
+		Unit:            "mg/dL",
+		Flag:            entities.MeasurementFlagHigh,
+		RefRangeHigh:    refFloat(100),
+		ArtifactID:      "artifact-1",
+		MeasuredAt:      time.Now(),
+	})
+
+	uc := NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err == nil {
+		t.Fatal("expected error from failing insight repo")
+	}
+}
+
+func TestGenerateInsights_HRVOnlyRecentWeek_NoInsight(t *testing.T) {
+	uc, _, measRepo, _ := newGenerateInsightsUseCase()
+	now := time.Now()
+
+	// Only recent week data (no prior data → priorAvg == 0)
+	for i := 0; i < 5; i++ {
+		measRepo.Add(&entities.Measurement{
+			ClientID:        "client-1",
+			MeasurementType: "hrv",
+			Value:           45,
+			Unit:            "ms",
+			Flag:            entities.MeasurementFlagNormal,
+			MeasuredAt:      now.AddDate(0, 0, -i),
+		})
+	}
+
+	output, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, card := range output.Insights {
+		if card.Title == "HRV Declining" {
+			t.Error("expected no HRV insight when no prior data exists")
+		}
+	}
+}
+
 func TestGenerateInsights_MeasurementRepoError_PropagatesError(t *testing.T) {
 	insightRepo := repository.NewInMemoryInsightCardRepository()
 	auditRepo := repository.NewInMemoryAuditRepository()
@@ -944,6 +1029,113 @@ func TestGenerateInsights_MeasurementRepoError_PropagatesError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error from failing measurement repo")
+	}
+}
+
+func TestGenerateInsights_WearableTrendError_PropagatesError(t *testing.T) {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	measRepo := &selectiveFailingMeasurementRepo{
+		failOnType: "hrv",
+		err:        errors.New("hrv query failed"),
+	}
+
+	uc := NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err == nil {
+		t.Fatal("expected error from failing HRV query")
+	}
+}
+
+func TestGenerateInsights_SleepTrendError_PropagatesError(t *testing.T) {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	measRepo := &selectiveFailingMeasurementRepo{
+		failOnType: "sleep_hours",
+		err:        errors.New("sleep query failed"),
+	}
+
+	uc := NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err == nil {
+		t.Fatal("expected error from failing sleep query")
+	}
+}
+
+func TestGenerateInsights_WeightError_PropagatesError(t *testing.T) {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	measRepo := &selectiveFailingMeasurementRepo{
+		failOnType: "weight",
+		err:        errors.New("weight query failed"),
+	}
+
+	uc := NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err == nil {
+		t.Fatal("expected error from failing weight query")
+	}
+}
+
+func TestGenerateInsights_BodyFatError_PropagatesError(t *testing.T) {
+	insightRepo := repository.NewInMemoryInsightCardRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+	measRepo := &selectiveFailingMeasurementRepo{
+		failOnType: "body_fat",
+		err:        errors.New("body fat query failed"),
+	}
+
+	uc := NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+	_, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err == nil {
+		t.Fatal("expected error from failing body fat query")
+	}
+}
+
+func TestGenerateInsights_WeightIncrease_ShowsIncreasedDirection(t *testing.T) {
+	uc, _, measRepo, _ := newGenerateInsightsUseCase()
+	now := time.Now()
+
+	measRepo.Add(&entities.Measurement{
+		ClientID:        "client-1",
+		MeasurementType: "weight",
+		Value:           180,
+		Unit:            "lbs",
+		Flag:            entities.MeasurementFlagNormal,
+		MeasuredAt:      now.AddDate(0, 0, -13),
+	})
+	measRepo.Add(&entities.Measurement{
+		ClientID:        "client-1",
+		MeasurementType: "weight",
+		Value:           192,
+		Unit:            "lbs",
+		Flag:            entities.MeasurementFlagNormal,
+		MeasuredAt:      now.AddDate(0, 0, -1),
+	})
+
+	output, err := uc.Execute(context.Background(), GenerateInsightsInput{
+		ClientID: "client-1", CoachID: "coach-1", ArtifactID: "artifact-1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	found := false
+	for _, card := range output.Insights {
+		if card.Title == "Significant Weight Change" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected Significant Weight Change insight for weight increase")
 	}
 }
 
@@ -962,4 +1154,65 @@ func (f *failingMeasurementRepo) FindByClientIDAndType(_ context.Context, _ stri
 
 func (f *failingMeasurementRepo) FindRecentByArtifactID(_ context.Context, _ string) ([]*entities.Measurement, error) {
 	return nil, f.err
+}
+
+// selectiveFailingMeasurementRepo fails only for a specific measurement type.
+type selectiveFailingMeasurementRepo struct {
+	failOnType string
+	err        error
+}
+
+func (f *selectiveFailingMeasurementRepo) FindByClientID(_ context.Context, _ string, _, _ int) ([]*entities.Measurement, error) {
+	return nil, nil
+}
+
+func (f *selectiveFailingMeasurementRepo) FindByClientIDAndType(_ context.Context, _ string, measType string, _ time.Time) ([]*entities.Measurement, error) {
+	if measType == f.failOnType {
+		return nil, f.err
+	}
+	return nil, nil
+}
+
+func (f *selectiveFailingMeasurementRepo) FindRecentByArtifactID(_ context.Context, _ string) ([]*entities.Measurement, error) {
+	return nil, nil
+}
+
+// insightFailingAuditRepo always returns an error on LogEvent (to test logInsightAudit error path).
+type insightFailingAuditRepo struct{}
+
+func (f *insightFailingAuditRepo) LogEvent(_ context.Context, _ *entities.AuditEvent) error {
+	return errors.New("audit log failure")
+}
+
+func (f *insightFailingAuditRepo) Query(_ context.Context, _ entities.AuditQueryFilter) ([]*entities.AuditEvent, int, error) {
+	return nil, 0, nil
+}
+
+// failingInsightCardRepo always returns an error on Create and ExistsByEvidence.
+type failingInsightCardRepo struct {
+	err error
+}
+
+func (f *failingInsightCardRepo) Create(_ context.Context, _ *entities.InsightCard) (*entities.InsightCard, error) {
+	return nil, f.err
+}
+
+func (f *failingInsightCardRepo) FindByID(_ context.Context, _ string) (*entities.InsightCard, error) {
+	return nil, nil
+}
+
+func (f *failingInsightCardRepo) FindByClientID(_ context.Context, _ string, _, _ int) ([]*entities.InsightCard, error) {
+	return nil, nil
+}
+
+func (f *failingInsightCardRepo) FindByStatus(_ context.Context, _ string, _ entities.InsightStatus, _, _ int) ([]*entities.InsightCard, error) {
+	return nil, nil
+}
+
+func (f *failingInsightCardRepo) ExistsByEvidence(_ context.Context, _ string, _ string) (bool, error) {
+	return false, nil
+}
+
+func (f *failingInsightCardRepo) UpdateStatus(_ context.Context, _ string, _ entities.InsightStatus) (*entities.InsightCard, error) {
+	return nil, nil
 }

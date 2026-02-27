@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/parser"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -224,7 +227,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,18 +235,61 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
 
+	// Register extract_lab_results handler
+	registerLabResultsHandler(w, pool)
+
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// registerLabResultsHandler wires the extract_lab_results job handler.
+func registerLabResultsHandler(w *worker.Worker, pool *pgxpool.Pool) {
+	measRepo := repository.NewInMemoryMeasurementRepository()
+	artRepo := repository.NewInMemoryArtifactRepository()
+	auditRepo := repository.NewInMemoryAuditRepository()
+
+	parsers := map[string]domainrepo.LabParser{
+		"text/csv": parser.NewCSVLabParser(),
+	}
+
+	extractUC := usecase.NewExtractLabResultsUseCase(measRepo, artRepo, auditRepo, parsers)
+
+	w.RegisterHandler(entities.JobTypeExtractLabResults, func(ctx context.Context, job *entities.Job) error {
+		var payload entities.LabResultPayload
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return fmt.Errorf("unmarshal lab results payload: %w", err)
+		}
+
+		// Retrieve artifact to get file metadata
+		artifact, err := artRepo.FindByID(ctx, payload.ArtifactID)
+		if err != nil {
+			return fmt.Errorf("find artifact: %w", err)
+		}
+		if artifact == nil {
+			return fmt.Errorf("artifact not found: %s", payload.ArtifactID)
+		}
+
+		// TODO: Download actual file content from S3/R2 when file storage is integrated
+		// For now, the handler is wired up but requires file content to be available
+		log.Printf("Lab results extraction job %s: artifact=%s, content_type=%s (file download not yet integrated)",
+			job.ID, payload.ArtifactID, artifact.ContentType)
+
+		_ = extractUC // Use case is ready for integration
+		return nil
+	})
+
+	_ = pool // Will be used for PostgreSQL measurement repository
+	log.Println("Registered extract_lab_results job handler")
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

@@ -1,0 +1,6 @@
+Test Name,Result,Units,Reference Range,Flag
+"Glucose, Fasting",115,mg/dL,70-100,H
+LDL Cholesterol,142,mg/dL,<100,H
+HDL Cholesterol,35,mg/dL,>40,L
+TSH,0.2,mIU/L,0.4-4.0,L
+Vitamin D,15,ng/mL,30-100,L

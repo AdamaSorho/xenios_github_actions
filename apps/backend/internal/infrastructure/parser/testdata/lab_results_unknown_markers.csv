@@ -1,0 +1,4 @@
+Test Name,Result,Units,Reference Range,Flag
+"Glucose, Fasting",98,mg/dL,70-100,
+Unknown Test XYZ,42,U/L,10-50,
+Another Unknown,3.5,mg/dL,1.0-5.0,

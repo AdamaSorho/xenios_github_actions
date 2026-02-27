@@ -183,3 +183,10 @@ func TestLoginUser_SuccessfulLogin_AuditEventLogged(t *testing.T) {
 		t.Error("expected auth.login audit event")
 	}
 }
+
+func TestAuthenticationError_Error_ReturnsMessage(t *testing.T) {
+	err := &AuthenticationError{Message: "invalid credentials"}
+	if err.Error() != "invalid credentials" {
+		t.Errorf("expected 'invalid credentials', got %q", err.Error())
+	}
+}

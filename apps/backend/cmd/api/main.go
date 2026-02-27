@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -121,9 +123,14 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 		api.Post("/uploads/{artifactID}/confirm", uploadHandler.ConfirmUpload)
 		api.Post("/uploads/{artifactID}/download", uploadHandler.RequestDownloadURL)
 
+		// Insight card endpoints
+		insightHandler := setupInsightHandler(pool, auditRepo)
+		api.Get("/coaches/{coachID}/insights/drafts", insightHandler.ListDraftInsights)
+		api.Put("/insights/{insightID}/status", insightHandler.UpdateInsightStatus)
+
 		// Job queue endpoints (if database is available)
 		if pool != nil {
-			queueHandler, w := setupJobQueue(pool)
+			queueHandler, w := setupJobQueue(pool, auditRepo)
 			jobWorker = w
 			api.Post("/jobs", queueHandler.EnqueueJob)
 			api.Get("/jobs/status", queueHandler.GetQueueStatus)
@@ -215,8 +222,23 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 	return handler.NewHealthHandlerWithUseCase(healthUseCase), cleanup
 }
 
+// setupInsightHandler wires up insight card dependencies and returns the handler.
+func setupInsightHandler(pool *pgxpool.Pool, auditRepo domainrepo.AuditRepository) *handler.InsightHandler {
+	var insightRepo domainrepo.InsightCardRepository
+	if pool != nil {
+		insightRepo = repository.NewPostgresInsightCardRepository(pool)
+	} else {
+		insightRepo = repository.NewInMemoryInsightCardRepository()
+	}
+
+	listUC := usecase.NewListInsightsUseCase(insightRepo)
+	updateStatusUC := usecase.NewUpdateInsightStatusUseCase(insightRepo, auditRepo)
+
+	return handler.NewInsightHandler(listUC, updateStatusUC)
+}
+
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
-func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+func setupJobQueue(pool *pgxpool.Pool, auditRepo domainrepo.AuditRepository) (*handler.QueueHandler, *worker.Worker) {
 	jobQueue := repository.NewPostgresJobQueue(pool)
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
@@ -224,15 +246,24 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	// Wire up insight generation use case for the worker
+	insightRepo := repository.NewPostgresInsightCardRepository(pool)
+	measRepo := repository.NewPostgresMeasurementRepository(pool)
+	generateInsightsUC := usecase.NewGenerateInsightsUseCase(insightRepo, measRepo, auditRepo)
+
+	// Register insight_generation handler
+	w.RegisterHandler(entities.JobTypeInsightGeneration, newInsightJobHandler(generateInsightsUC))
+
+	// Register placeholder handlers for other job types
+	placeholderTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
-		entities.JobTypeInsightGeneration,
 		entities.JobTypeAnalyticsAggregation,
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderTypes {
+		jt := jt
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
@@ -244,6 +275,36 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// newInsightJobHandler creates a worker.JobHandler for insight generation.
+func newInsightJobHandler(uc *usecase.GenerateInsightsUseCase) worker.JobHandler {
+	return func(ctx context.Context, job *entities.Job) error {
+		var payload struct {
+			ClientID   string `json:"client_id"`
+			CoachID    string `json:"coach_id"`
+			ArtifactID string `json:"artifact_id"`
+		}
+
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return fmt.Errorf("parse insight job payload: %w", err)
+		}
+
+		input := usecase.GenerateInsightsInput{
+			ClientID:   payload.ClientID,
+			CoachID:    payload.CoachID,
+			ArtifactID: payload.ArtifactID,
+		}
+
+		output, err := uc.Execute(ctx, input)
+		if err != nil {
+			return fmt.Errorf("generate insights: %w", err)
+		}
+
+		log.Printf("Insight generation completed: %d insights created for client %s",
+			output.InsightsCreated, payload.ClientID)
+		return nil
+	}
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

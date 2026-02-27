@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +21,7 @@ import (
 	domainrepo "github.com/xenios/backend/internal/domain/repository"
 	"github.com/xenios/backend/internal/infrastructure/auth"
 	"github.com/xenios/backend/internal/infrastructure/config"
+	"github.com/xenios/backend/internal/infrastructure/nutrition"
 	"github.com/xenios/backend/internal/infrastructure/worker"
 	"github.com/xenios/backend/internal/usecase"
 )
@@ -123,7 +126,7 @@ func configureRoutes(cfg *config.Config, healthHandler *handler.HealthHandler, p
 
 		// Job queue endpoints (if database is available)
 		if pool != nil {
-			queueHandler, w := setupJobQueue(pool)
+			queueHandler, w := setupJobQueue(pool, auditRepo)
 			jobWorker = w
 			api.Post("/jobs", queueHandler.EnqueueJob)
 			api.Get("/jobs/status", queueHandler.GetQueueStatus)
@@ -216,7 +219,7 @@ func wireHealthHandler(pool *pgxpool.Pool) (*handler.HealthHandler, func()) {
 }
 
 // setupJobQueue wires up the job queue infrastructure and starts the worker.
-func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
+func setupJobQueue(pool *pgxpool.Pool, auditRepo domainrepo.AuditRepository) (*handler.QueueHandler, *worker.Worker) {
 	jobQueue := repository.NewPostgresJobQueue(pool)
 	enqueueUC := usecase.NewEnqueueJobUseCase(jobQueue)
 	statusUC := usecase.NewGetQueueStatusUseCase(jobQueue)
@@ -224,7 +227,7 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 
 	w := worker.NewWorker(jobQueue, 5*time.Second, 5*time.Minute)
 
-	allJobTypes := []entities.JobType{
+	placeholderJobTypes := []entities.JobType{
 		entities.JobTypeTranscription,
 		entities.JobTypeDocumentExtraction,
 		entities.JobTypeInsightGeneration,
@@ -232,18 +235,51 @@ func setupJobQueue(pool *pgxpool.Pool) (*handler.QueueHandler, *worker.Worker) {
 		entities.JobTypeRiskDetection,
 		entities.JobTypeAudioCleanup,
 	}
-	for _, jt := range allJobTypes {
+	for _, jt := range placeholderJobTypes {
 		w.RegisterHandler(jt, func(ctx context.Context, job *entities.Job) error {
 			log.Printf("Processing %s job %s (placeholder handler)", jt, job.ID)
 			return nil
 		})
 	}
 
+	// Wire up nutrition extraction handler
+	nutritionHandler := setupNutritionHandler(auditRepo)
+	w.RegisterHandler(entities.JobTypeExtractNutrition, nutritionHandler)
+
 	ctx := context.Background()
 	w.Start(ctx)
 	log.Println("Job worker started with handlers for all job types")
 
 	return queueHandler, w
+}
+
+// setupNutritionHandler wires up the extract_nutrition job handler.
+func setupNutritionHandler(auditRepo domainrepo.AuditRepository) worker.JobHandler {
+	artifactRepo := repository.NewInMemoryArtifactRepository()
+	fileStorage := repository.NewInMemoryFileStorage()
+	parser := nutrition.NewCSVParser()
+	measRepo := repository.NewInMemoryMeasurementRepository()
+	summaryRepo := repository.NewInMemoryNutritionSummaryRepository()
+
+	extractUC := usecase.NewExtractNutritionUseCase(artifactRepo, fileStorage, parser, measRepo, summaryRepo, auditRepo)
+
+	return func(ctx context.Context, job *entities.Job) error {
+		var payload struct {
+			ArtifactID string `json:"artifact_id"`
+			ClientID   string `json:"client_id"`
+			CoachID    string `json:"coach_id"`
+		}
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return fmt.Errorf("unmarshal payload: %w", err)
+		}
+
+		_, err := extractUC.Execute(ctx, usecase.ExtractNutritionInput{
+			ArtifactID: payload.ArtifactID,
+			ClientID:   payload.ClientID,
+			CoachID:    payload.CoachID,
+		})
+		return err
+	}
 }
 
 // setupUploadHandler wires up file upload/download dependencies and returns the handler.

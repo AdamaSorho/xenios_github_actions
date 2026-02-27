@@ -15,6 +15,7 @@ func TestIsValidJobType_ValidTypes_ReturnsTrue(t *testing.T) {
 		JobTypeAnalyticsAggregation,
 		JobTypeRiskDetection,
 		JobTypeAudioCleanup,
+		JobTypeExtractNutrition,
 	}
 
 	for _, jt := range validTypes {
@@ -237,6 +238,7 @@ func TestJobTypeConstants_Values(t *testing.T) {
 		{JobTypeAnalyticsAggregation, "analytics_aggregation"},
 		{JobTypeRiskDetection, "risk_detection"},
 		{JobTypeAudioCleanup, "audio_cleanup"},
+		{JobTypeExtractNutrition, "extract_nutrition"},
 	}
 
 	for _, tc := range tests {

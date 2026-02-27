@@ -31,6 +31,13 @@ func (m *mockCoachClientRepository) ListByCoachID(ctx context.Context, coachID s
 	return []*entities.CoachClient{}, nil
 }
 
+func (m *mockCoachClientRepository) FindByCoachAndClient(_ context.Context, _, _ string) (*entities.CoachClient, error) {
+	if m.shouldError {
+		return nil, errors.New("find error")
+	}
+	return &entities.CoachClient{ID: "mock-id"}, nil
+}
+
 func TestCoachClientRepository_Interface(t *testing.T) {
 	var _ CoachClientRepository = (*mockCoachClientRepository)(nil)
 }

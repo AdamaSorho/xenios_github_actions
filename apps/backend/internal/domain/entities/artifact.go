@@ -11,9 +11,10 @@ import (
 type ArtifactStatus string
 
 const (
-	ArtifactStatusPending  ArtifactStatus = "pending"
-	ArtifactStatusUploaded ArtifactStatus = "uploaded"
-	ArtifactStatusFailed   ArtifactStatus = "failed"
+	ArtifactStatusPending   ArtifactStatus = "pending"
+	ArtifactStatusUploaded  ArtifactStatus = "uploaded"
+	ArtifactStatusFailed    ArtifactStatus = "failed"
+	ArtifactStatusProcessed ArtifactStatus = "processed"
 )
 
 // ArtifactType categorizes the kind of file being stored.
